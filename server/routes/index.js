@@ -1,0 +1,636 @@
+const express = require('express');
+const bcrypt = require('bcrypt');
+
+const Product = require('../models/Product');
+const Category = require('../models/Category');
+const Cart = require('../models/Cart');
+const Order = require('../models/Order');
+const User = require('../models/User');
+const { getNextSequence } = require('../utils/getNextSequence');
+
+const router = express.Router();
+
+function sendResponse(res, statusCode, data = null, message = null, error = null) {
+  const response = {};
+  if (data !== null) response.data = data;
+  if (message) response.message = message;
+  if (error) response.error = error;
+  return res.status(statusCode).json(response);
+}
+
+function validateRequired(data, requiredFields) {
+  const missing = requiredFields.filter((field) => !data[field]);
+  if (missing.length > 0) {
+    return { valid: false, error: `Missing required fields: ${missing.join(', ')}` };
+  }
+  return { valid: true };
+}
+
+function authenticate(req, res, next) {
+  const userId = req.headers['x-user-id'] || req.body.userId;
+  if (!userId) {
+    return sendResponse(res, 401, null, null, 'Authentication required');
+  }
+  req.userId = parseInt(userId, 10);
+  next();
+}
+
+// ============================
+// Products
+// ============================
+router.get('/products', async (req, res) => {
+  try {
+    const { categoryId, minPrice, maxPrice, search } = req.query;
+    const filter = {};
+
+    if (categoryId) {
+      filter.categoryId = parseInt(categoryId, 10);
+    }
+    if (minPrice) {
+      filter.price = { ...(filter.price || {}), $gte: parseFloat(minPrice) };
+    }
+    if (maxPrice) {
+      filter.price = { ...(filter.price || {}), $lte: parseFloat(maxPrice) };
+    }
+    if (search) {
+      filter.$text = { $search: search };
+    }
+
+    const page = parseInt(req.query.page, 10) || 1;
+    const limit = parseInt(req.query.limit, 10) || 10;
+    const skip = (page - 1) * limit;
+
+    const [products, total] = await Promise.all([
+      Product.find(filter).skip(skip).limit(limit).sort({ createdAt: -1 }),
+      Product.countDocuments(filter),
+    ]);
+
+    return sendResponse(res, 200, {
+      products,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit),
+      },
+    });
+  } catch (error) {
+    return sendResponse(res, 500, null, null, error.message);
+  }
+});
+
+router.get('/products/:id', async (req, res) => {
+  try {
+    const product = await Product.findOne({ id: parseInt(req.params.id, 10) });
+    if (!product) {
+      return sendResponse(res, 404, null, null, 'Product not found');
+    }
+    return sendResponse(res, 200, product);
+  } catch (error) {
+    return sendResponse(res, 500, null, null, error.message);
+  }
+});
+
+router.post('/products', async (req, res) => {
+  const validation = validateRequired(req.body, ['name', 'price', 'categoryId']);
+  if (!validation.valid) {
+    return sendResponse(res, 400, null, null, validation.error);
+  }
+
+  try {
+    const { name, price, description, categoryId, stock, image } = req.body;
+    const category = await Category.findOne({ id: parseInt(categoryId, 10) });
+    if (!category) {
+      return sendResponse(res, 400, null, null, 'Invalid categoryId');
+    }
+    if (isNaN(price) || Number(price) <= 0) {
+      return sendResponse(res, 400, null, null, 'Price must be a positive number');
+    }
+
+    const newProduct = await Product.create({
+      id: await getNextSequence('product'),
+      name,
+      price: parseFloat(price),
+      description: description || '',
+      categoryId: parseInt(categoryId, 10),
+      stock: stock !== undefined ? parseInt(stock, 10) : 0,
+      image: image || '',
+    });
+
+    return sendResponse(res, 201, newProduct, 'Product created successfully');
+  } catch (error) {
+    return sendResponse(res, 500, null, null, error.message);
+  }
+});
+
+router.put('/products/:id', async (req, res) => {
+  try {
+    const { name, price, description, categoryId, stock, image } = req.body;
+
+    if (categoryId) {
+      const category = await Category.findOne({ id: parseInt(categoryId, 10) });
+      if (!category) {
+        return sendResponse(res, 400, null, null, 'Invalid categoryId');
+      }
+    }
+
+    const update = {};
+    if (name) update.name = name;
+    if (price !== undefined) update.price = parseFloat(price);
+    if (description !== undefined) update.description = description;
+    if (categoryId) update.categoryId = parseInt(categoryId, 10);
+    if (stock !== undefined) update.stock = parseInt(stock, 10);
+    if (image !== undefined) update.image = image;
+
+    const updatedProduct = await Product.findOneAndUpdate(
+      { id: parseInt(req.params.id, 10) },
+      { $set: update },
+      { new: true }
+    );
+
+    if (!updatedProduct) {
+      return sendResponse(res, 404, null, null, 'Product not found');
+    }
+
+    return sendResponse(res, 200, updatedProduct, 'Product updated successfully');
+  } catch (error) {
+    return sendResponse(res, 500, null, null, error.message);
+  }
+});
+
+router.delete('/products/:id', async (req, res) => {
+  try {
+    const deleted = await Product.findOneAndDelete({ id: parseInt(req.params.id, 10) });
+    if (!deleted) {
+      return sendResponse(res, 404, null, null, 'Product not found');
+    }
+    return sendResponse(res, 200, null, 'Product deleted successfully');
+  } catch (error) {
+    return sendResponse(res, 500, null, null, error.message);
+  }
+});
+
+// ============================
+// Categories
+// ============================
+router.get('/categories', async (req, res) => {
+  try {
+    const allCategories = await Category.find().sort({ name: 1 });
+    return sendResponse(res, 200, allCategories);
+  } catch (error) {
+    return sendResponse(res, 500, null, null, error.message);
+  }
+});
+
+router.get('/categories/:id', async (req, res) => {
+  try {
+    const category = await Category.findOne({ id: parseInt(req.params.id, 10) });
+    if (!category) {
+      return sendResponse(res, 404, null, null, 'Category not found');
+    }
+    const categoryProducts = await Product.find({ categoryId: category.id });
+    return sendResponse(res, 200, { ...category.toObject(), products: categoryProducts });
+  } catch (error) {
+    return sendResponse(res, 500, null, null, error.message);
+  }
+});
+
+router.post('/categories', async (req, res) => {
+  const validation = validateRequired(req.body, ['name']);
+  if (!validation.valid) {
+    return sendResponse(res, 400, null, null, validation.error);
+  }
+
+  try {
+    const { name, description } = req.body;
+    const newCategory = await Category.create({
+      id: await getNextSequence('category'),
+      name,
+      description: description || '',
+    });
+    return sendResponse(res, 201, newCategory, 'Category created successfully');
+  } catch (error) {
+    return sendResponse(res, 500, null, null, error.message);
+  }
+});
+
+router.put('/categories/:id', async (req, res) => {
+  try {
+    const { name, description } = req.body;
+    const update = {};
+    if (name) update.name = name;
+    if (description !== undefined) update.description = description;
+
+    const category = await Category.findOneAndUpdate(
+      { id: parseInt(req.params.id, 10) },
+      { $set: update },
+      { new: true }
+    );
+
+    if (!category) {
+      return sendResponse(res, 404, null, null, 'Category not found');
+    }
+
+    return sendResponse(res, 200, category, 'Category updated successfully');
+  } catch (error) {
+    return sendResponse(res, 500, null, null, error.message);
+  }
+});
+
+router.delete('/categories/:id', async (req, res) => {
+  try {
+    const hasProducts = await Product.exists({ categoryId: parseInt(req.params.id, 10) });
+    if (hasProducts) {
+      return sendResponse(res, 400, null, null, 'Cannot delete category with existing products');
+    }
+
+    const deleted = await Category.findOneAndDelete({ id: parseInt(req.params.id, 10) });
+    if (!deleted) {
+      return sendResponse(res, 404, null, null, 'Category not found');
+    }
+
+    return sendResponse(res, 200, null, 'Category deleted successfully');
+  } catch (error) {
+    return sendResponse(res, 500, null, null, error.message);
+  }
+});
+
+// ============================
+// Cart
+// ============================
+router.get('/cart', authenticate, async (req, res) => {
+  try {
+    const cart = await Cart.findOne({ userId: req.userId });
+    if (!cart || cart.items.length === 0) {
+      return sendResponse(res, 200, { items: [], total: 0, itemCount: 0 });
+    }
+
+    const productIds = cart.items.map((item) => item.productId);
+    const productMap = await Product.find({ id: { $in: productIds } }).then((docs) =>
+      docs.reduce((map, doc) => {
+        map[doc.id] = doc;
+        return map;
+      }, {})
+    );
+
+    let total = 0;
+    const cartWithDetails = cart.items
+      .map((item) => {
+        const product = productMap[item.productId];
+        if (!product) return null;
+        const subtotal = product.price * item.quantity;
+        total += subtotal;
+        return {
+          productId: product.id,
+          productName: product.name,
+          price: product.price,
+          quantity: item.quantity,
+          subtotal,
+          image: product.image,
+        };
+      })
+      .filter(Boolean);
+
+    return sendResponse(res, 200, {
+      items: cartWithDetails,
+      total,
+      itemCount: cartWithDetails.reduce((sum, item) => sum + item.quantity, 0),
+    });
+  } catch (error) {
+    return sendResponse(res, 500, null, null, error.message);
+  }
+});
+
+router.post('/cart/items', authenticate, async (req, res) => {
+  const validation = validateRequired(req.body, ['productId', 'quantity']);
+  if (!validation.valid) {
+    return sendResponse(res, 400, null, null, validation.error);
+  }
+
+  try {
+    const { productId, quantity } = req.body;
+    const product = await Product.findOne({ id: parseInt(productId, 10) });
+    if (!product) {
+      return sendResponse(res, 404, null, null, 'Product not found');
+    }
+    if (product.stock < quantity) {
+      return sendResponse(res, 400, null, null, 'Insufficient stock');
+    }
+
+    const cart = await Cart.findOneAndUpdate(
+      { userId: req.userId, 'items.productId': parseInt(productId, 10) },
+      { $inc: { 'items.$.quantity': quantity } },
+      { new: true }
+    );
+
+    if (!cart) {
+      const updatedCart = await Cart.findOneAndUpdate(
+        { userId: req.userId },
+        { $push: { items: { productId: parseInt(productId, 10), quantity } } },
+        { new: true, upsert: true }
+      );
+      return sendResponse(res, 201, updatedCart.items, 'Item added to cart');
+    }
+
+    return sendResponse(res, 201, cart.items, 'Item added to cart');
+  } catch (error) {
+    return sendResponse(res, 500, null, null, error.message);
+  }
+});
+
+router.put('/cart/items/:productId', authenticate, async (req, res) => {
+  const { quantity } = req.body;
+  if (!quantity || quantity <= 0) {
+    return sendResponse(res, 400, null, null, 'Quantity must be a positive number');
+  }
+
+  try {
+    const product = await Product.findOne({ id: parseInt(req.params.productId, 10) });
+    if (!product || product.stock < quantity) {
+      return sendResponse(res, 400, null, null, 'Insufficient stock');
+    }
+
+    const cart = await Cart.findOneAndUpdate(
+      { userId: req.userId, 'items.productId': parseInt(req.params.productId, 10) },
+      { $set: { 'items.$.quantity': quantity } },
+      { new: true }
+    );
+
+    if (!cart) {
+      return sendResponse(res, 404, null, null, 'Item not found in cart');
+    }
+
+    return sendResponse(res, 200, cart.items, 'Cart item updated');
+  } catch (error) {
+    return sendResponse(res, 500, null, null, error.message);
+  }
+});
+
+router.delete('/cart/items/:productId', authenticate, async (req, res) => {
+  try {
+    const cart = await Cart.findOneAndUpdate(
+      { userId: req.userId },
+      { $pull: { items: { productId: parseInt(req.params.productId, 10) } } },
+      { new: true }
+    );
+
+    if (!cart) {
+      return sendResponse(res, 404, null, null, 'Cart not found');
+    }
+
+    return sendResponse(res, 200, cart.items, 'Item removed from cart');
+  } catch (error) {
+    return sendResponse(res, 500, null, null, error.message);
+  }
+});
+
+router.delete('/cart', authenticate, async (req, res) => {
+  try {
+    await Cart.findOneAndUpdate({ userId: req.userId }, { $set: { items: [] } }, { upsert: true });
+    return sendResponse(res, 200, null, 'Cart cleared');
+  } catch (error) {
+    return sendResponse(res, 500, null, null, error.message);
+  }
+});
+
+// ============================
+// Orders
+// ============================
+router.get('/orders', authenticate, async (req, res) => {
+  try {
+    const userOrders = await Order.find({ userId: req.userId }).sort({ createdAt: -1 });
+    return sendResponse(res, 200, userOrders);
+  } catch (error) {
+    return sendResponse(res, 500, null, null, error.message);
+  }
+});
+
+router.get('/orders/:id', authenticate, async (req, res) => {
+  try {
+    const order = await Order.findOne({ id: parseInt(req.params.id, 10) });
+    if (!order) {
+      return sendResponse(res, 404, null, null, 'Order not found');
+    }
+    if (order.userId !== req.userId) {
+      return sendResponse(res, 403, null, null, 'Access denied');
+    }
+    return sendResponse(res, 200, order);
+  } catch (error) {
+    return sendResponse(res, 500, null, null, error.message);
+  }
+});
+
+router.post('/orders', authenticate, async (req, res) => {
+  const validation = validateRequired(req.body, ['items']);
+  if (!validation.valid) {
+    return sendResponse(res, 400, null, null, validation.error);
+  }
+
+  try {
+    const { items, shippingAddress, paymentMethod } = req.body;
+    if (!Array.isArray(items) || items.length === 0) {
+      return sendResponse(res, 400, null, null, 'Items must be a non-empty array');
+    }
+
+    const orderItems = [];
+    let total = 0;
+
+    for (const item of items) {
+      if (!item.productId || !item.quantity) {
+        return sendResponse(res, 400, null, null, 'Each item must have productId and quantity');
+      }
+
+      const product = await Product.findOne({ id: parseInt(item.productId, 10) });
+      if (!product) {
+        return sendResponse(res, 400, null, null, `Product ${item.productId} not found`);
+      }
+      if (product.stock < item.quantity) {
+        return sendResponse(res, 400, null, null, `Insufficient stock for product ${product.name}`);
+      }
+
+      const itemTotal = product.price * item.quantity;
+      total += itemTotal;
+
+      orderItems.push({
+        productId: product.id,
+        productName: product.name,
+        quantity: item.quantity,
+        price: product.price,
+        subtotal: itemTotal,
+      });
+
+      product.stock -= item.quantity;
+      await product.save();
+    }
+
+    await Cart.findOneAndUpdate({ userId: req.userId }, { $set: { items: [] } });
+
+    const newOrder = await Order.create({
+      id: await getNextSequence('order'),
+      userId: req.userId,
+      items: orderItems,
+      total,
+      status: 'pending',
+      shippingAddress: shippingAddress || {},
+      paymentMethod: paymentMethod || 'credit_card',
+    });
+
+    return sendResponse(res, 201, newOrder, 'Order created successfully');
+  } catch (error) {
+    return sendResponse(res, 500, null, null, error.message);
+  }
+});
+
+router.put('/orders/:id/status', authenticate, async (req, res) => {
+  const validStatuses = ['pending', 'processing', 'shipped', 'delivered', 'cancelled'];
+  const { status } = req.body;
+
+  if (!status || !validStatuses.includes(status)) {
+    return sendResponse(res, 400, null, null, `Status must be one of: ${validStatuses.join(', ')}`);
+  }
+
+  try {
+    const order = await Order.findOneAndUpdate(
+      { id: parseInt(req.params.id, 10) },
+      { $set: { status } },
+      { new: true }
+    );
+
+    if (!order) {
+      return sendResponse(res, 404, null, null, 'Order not found');
+    }
+
+    return sendResponse(res, 200, order, 'Order status updated successfully');
+  } catch (error) {
+    return sendResponse(res, 500, null, null, error.message);
+  }
+});
+
+// ============================
+// Users
+// ============================
+router.post('/users/register', async (req, res) => {
+  const validation = validateRequired(req.body, ['username', 'password', 'email']);
+  if (!validation.valid) {
+    return sendResponse(res, 400, null, null, validation.error);
+  }
+
+  try {
+    const { username, password, email, firstName, lastName } = req.body;
+    const existingUser = await User.findOne({
+      $or: [{ username }, { email }],
+    });
+    if (existingUser) {
+      return sendResponse(res, 409, null, null, 'Username or email already exists');
+    }
+
+    const hashedPassword = await bcrypt.hash(password, 10);
+    const newUser = await User.create({
+      id: await getNextSequence('user'),
+      username,
+      email,
+      password: hashedPassword,
+      firstName: firstName || '',
+      lastName: lastName || '',
+    });
+
+    const { password: _, ...userResponse } = newUser.toObject();
+    return sendResponse(res, 201, userResponse, 'User registered successfully');
+  } catch (error) {
+    return sendResponse(res, 500, null, null, error.message);
+  }
+});
+
+router.post('/users/login', async (req, res) => {
+  const validation = validateRequired(req.body, ['username', 'password']);
+  if (!validation.valid) {
+    return sendResponse(res, 400, null, null, validation.error);
+  }
+
+  try {
+    const { username, password } = req.body;
+    const user = await User.findOne({ username });
+    if (!user) {
+      return sendResponse(res, 401, null, null, 'Invalid credentials');
+    }
+
+    const isValid = await bcrypt.compare(password, user.password);
+    if (!isValid) {
+      return sendResponse(res, 401, null, null, 'Invalid credentials');
+    }
+
+    const { password: _, ...userResponse } = user.toObject();
+    return sendResponse(
+      res,
+      200,
+      {
+        user: userResponse,
+        token: `mock-token-${user.id}`,
+      },
+      'Login successful'
+    );
+  } catch (error) {
+    return sendResponse(res, 500, null, null, error.message);
+  }
+});
+
+router.get('/users/profile', authenticate, async (req, res) => {
+  try {
+    const user = await User.findOne({ id: req.userId });
+    if (!user) {
+      return sendResponse(res, 404, null, null, 'User not found');
+    }
+    const { password: _, ...userResponse } = user.toObject();
+    return sendResponse(res, 200, userResponse);
+  } catch (error) {
+    return sendResponse(res, 500, null, null, error.message);
+  }
+});
+
+router.put('/users/profile', authenticate, async (req, res) => {
+  try {
+    const { email, firstName, lastName } = req.body;
+
+    if (email) {
+      const emailInUse = await User.findOne({ email, id: { $ne: req.userId } });
+      if (emailInUse) {
+        return sendResponse(res, 409, null, null, 'Email already in use');
+      }
+    }
+
+    const updatedUser = await User.findOneAndUpdate(
+      { id: req.userId },
+      {
+        $set: {
+          ...(email && { email }),
+          ...(firstName !== undefined && { firstName }),
+          ...(lastName !== undefined && { lastName }),
+        },
+      },
+      { new: true }
+    );
+
+    if (!updatedUser) {
+      return sendResponse(res, 404, null, null, 'User not found');
+    }
+
+    const { password: _, ...userResponse } = updatedUser.toObject();
+    return sendResponse(res, 200, userResponse, 'Profile updated successfully');
+  } catch (error) {
+    return sendResponse(res, 500, null, null, error.message);
+  }
+});
+
+// ============================
+// Health check
+// ============================
+router.get('/health', (req, res) => {
+  return sendResponse(res, 200, {
+    status: 'healthy',
+    timestamp: new Date().toISOString(),
+    uptime: process.uptime(),
+  });
+});
+
+module.exports = router;
+
