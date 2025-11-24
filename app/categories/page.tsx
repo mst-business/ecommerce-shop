@@ -1,10 +1,12 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { api, Category, Product } from '@/lib/api-client'
 
 export default function CategoriesPage() {
+  const searchParams = useSearchParams()
   const [categories, setCategories] = useState<Category[]>([])
   const [selectedCategory, setSelectedCategory] = useState<number | null>(null)
   const [products, setProducts] = useState<Product[]>([])
@@ -12,7 +14,12 @@ export default function CategoriesPage() {
 
   useEffect(() => {
     loadCategories()
-  }, [])
+    // Check for categoryId in URL query params
+    const categoryIdParam = searchParams.get('categoryId')
+    if (categoryIdParam) {
+      setSelectedCategory(parseInt(categoryIdParam, 10))
+    }
+  }, [searchParams])
 
   useEffect(() => {
     if (selectedCategory) {
@@ -52,23 +59,8 @@ export default function CategoriesPage() {
 
   return (
     <div className="container mx-auto px-4 py-8">
-      <h1 className="text-4xl font-bold text-gray-800 mb-8">Categories</h1>
+
       
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-        {categories.map((category) => (
-          <div
-            key={category.id}
-            onClick={() => setSelectedCategory(category.id)}
-            className="bg-white p-6 rounded-lg shadow-md hover:shadow-xl transition-shadow cursor-pointer"
-          >
-            <div className="text-5xl mb-4 text-center">📦</div>
-            <h2 className="text-xl font-semibold text-gray-800 mb-2">
-              {category.name}
-            </h2>
-            <p className="text-gray-600">{category.description}</p>
-          </div>
-        ))}
-      </div>
 
       {selectedCategory && (
         <div className="mt-8">
