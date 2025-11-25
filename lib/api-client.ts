@@ -14,7 +14,9 @@ export interface Product {
   categoryId: number;
   stock: number;
   image?: string;
+  active?: boolean;
   createdAt?: string;
+  categoryName?: string;
 }
 
 export interface Category {
@@ -63,6 +65,48 @@ export interface User {
   email: string;
   firstName?: string;
   lastName?: string;
+  createdAt?: string;
+}
+
+export interface Customer extends User {
+  orderCount?: number;
+  totalSpent?: number;
+  orders?: Order[];
+}
+
+export interface AdminStats {
+  products: {
+    total: number;
+    active: number;
+    outOfStock: number;
+  };
+  categories: number;
+  users: number;
+  orders: {
+    total: number;
+    byStatus: Record<string, number>;
+  };
+  sales: {
+    total: number;
+    byDay: Array<{
+      _id: string;
+      totalSales: number;
+      orderCount: number;
+    }>;
+  };
+  topProducts: Array<{
+    _id: number;
+    productName: string;
+    totalQuantity: number;
+    totalRevenue: number;
+  }>;
+}
+
+export interface AdminOrder extends Order {
+  user?: {
+    username: string;
+    email: string;
+  };
 }
 
 class APIClient {
@@ -308,6 +352,84 @@ class APIClient {
     if (typeof window === 'undefined') return null;
     const userStr = localStorage.getItem('user');
     return userStr ? JSON.parse(userStr) : null;
+  }
+
+  // Admin Methods
+  async getAdminStats(): Promise<{ data: AdminStats }> {
+    return this.request('/admin/stats');
+  }
+
+  async getAdminOrders(params?: {
+    page?: number;
+    limit?: number;
+    status?: string;
+  }): Promise<{ data: { orders: AdminOrder[]; pagination: any } }> {
+    const queryString = params
+      ? '?' + new URLSearchParams(
+          Object.entries(params)
+            .filter(([_, v]) => v !== undefined)
+            .map(([k, v]) => [k, v.toString()])
+        ).toString()
+      : '';
+    return this.request(`/admin/orders${queryString}`);
+  }
+
+  async getRecentOrders(limit?: number): Promise<{ data: AdminOrder[] }> {
+    return this.request(`/admin/orders/recent?limit=${limit || 10}`);
+  }
+
+  async getAdminProducts(params?: {
+    categoryId?: number;
+    search?: string;
+    active?: boolean;
+    inStock?: boolean;
+    page?: number;
+    limit?: number;
+  }): Promise<{ data: { products: Product[]; pagination: any } }> {
+    const queryString = params
+      ? '?' + new URLSearchParams(
+          Object.entries(params)
+            .filter(([_, v]) => v !== undefined)
+            .map(([k, v]) => [k, v.toString()])
+        ).toString()
+      : '';
+    return this.request(`/admin/products${queryString}`);
+  }
+
+  async bulkUpdateProducts(
+    productIds: number[],
+    action: 'activate' | 'deactivate'
+  ): Promise<{ data: { modifiedCount: number }; message?: string }> {
+    return this.request('/admin/products/bulk', {
+      method: 'PUT',
+      body: JSON.stringify({ productIds, action }),
+    });
+  }
+
+  async updateProductStock(id: number, stock: number): Promise<{ data: Product }> {
+    return this.request(`/admin/products/${id}/stock`, {
+      method: 'PUT',
+      body: JSON.stringify({ stock }),
+    });
+  }
+
+  async getCustomers(params?: {
+    search?: string;
+    page?: number;
+    limit?: number;
+  }): Promise<{ data: { customers: Customer[]; pagination: any } }> {
+    const queryString = params
+      ? '?' + new URLSearchParams(
+          Object.entries(params)
+            .filter(([_, v]) => v !== undefined)
+            .map(([k, v]) => [k, v.toString()])
+        ).toString()
+      : '';
+    return this.request(`/admin/customers${queryString}`);
+  }
+
+  async getCustomer(id: number): Promise<{ data: Customer }> {
+    return this.request(`/admin/customers/${id}`);
   }
 }
 

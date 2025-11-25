@@ -9,6 +9,7 @@ const ProductSchema = new mongoose.Schema(
     categoryId: { type: Number, required: true, index: true },
     stock: { type: Number, default: 0 },
     image: { type: String },
+    active: { type: Boolean, default: true, index: true },
   },
   { timestamps: true }
 );

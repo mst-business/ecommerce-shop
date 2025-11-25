@@ -40,8 +40,14 @@ function authenticate(req, res, next) {
 // ============================
 router.get('/products', async (req, res) => {
   try {
-    const { categoryId, minPrice, maxPrice, search } = req.query;
+    const { categoryId, minPrice, maxPrice, search, includeOutOfStock } = req.query;
     const filter = {};
+
+    // By default, only show active products with stock > 0 for customers
+    filter.active = { $ne: false };
+    if (includeOutOfStock !== 'true') {
+      filter.stock = { $gt: 0 };
+    }
 
     if (categoryId) {
       filter.categoryId = parseInt(categoryId, 10);
@@ -98,7 +104,7 @@ router.post('/products', async (req, res) => {
   }
 
   try {
-    const { name, price, description, categoryId, stock, image } = req.body;
+    const { name, price, description, categoryId, stock, image, active } = req.body;
     const category = await Category.findOne({ id: parseInt(categoryId, 10) });
     if (!category) {
       return sendResponse(res, 400, null, null, 'Invalid categoryId');
@@ -115,6 +121,7 @@ router.post('/products', async (req, res) => {
       categoryId: parseInt(categoryId, 10),
       stock: stock !== undefined ? parseInt(stock, 10) : 0,
       image: image || '',
+      active: active !== undefined ? active : true,
     });
 
     return sendResponse(res, 201, newProduct, 'Product created successfully');
@@ -125,7 +132,7 @@ router.post('/products', async (req, res) => {
 
 router.put('/products/:id', async (req, res) => {
   try {
-    const { name, price, description, categoryId, stock, image } = req.body;
+    const { name, price, description, categoryId, stock, image, active } = req.body;
 
     if (categoryId) {
       const category = await Category.findOne({ id: parseInt(categoryId, 10) });
@@ -141,6 +148,7 @@ router.put('/products/:id', async (req, res) => {
     if (categoryId) update.categoryId = parseInt(categoryId, 10);
     if (stock !== undefined) update.stock = parseInt(stock, 10);
     if (image !== undefined) update.image = image;
+    if (active !== undefined) update.active = active;
 
     const updatedProduct = await Product.findOneAndUpdate(
       { id: parseInt(req.params.id, 10) },
@@ -616,6 +624,362 @@ router.put('/users/profile', authenticate, async (req, res) => {
 
     const { password: _, ...userResponse } = updatedUser.toObject();
     return sendResponse(res, 200, userResponse, 'Profile updated successfully');
+  } catch (error) {
+    return sendResponse(res, 500, null, null, error.message);
+  }
+});
+
+// ============================
+// Admin Endpoints
+// ============================
+
+// Admin: Get dashboard statistics
+router.get('/admin/stats', async (req, res) => {
+  try {
+    const [
+      totalProducts,
+      activeProducts,
+      outOfStockProducts,
+      totalCategories,
+      totalUsers,
+      totalOrders,
+      orders,
+    ] = await Promise.all([
+      Product.countDocuments(),
+      Product.countDocuments({ active: true, stock: { $gt: 0 } }),
+      Product.countDocuments({ stock: 0 }),
+      Category.countDocuments(),
+      User.countDocuments(),
+      Order.countDocuments(),
+      Order.find().sort({ createdAt: -1 }),
+    ]);
+
+    // Calculate total sales
+    const totalSales = orders.reduce((sum, order) => sum + order.total, 0);
+
+    // Get orders by status
+    const ordersByStatus = await Order.aggregate([
+      { $group: { _id: '$status', count: { $sum: 1 } } },
+    ]);
+
+    // Get sales by day (last 30 days)
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+    const salesByDay = await Order.aggregate([
+      { $match: { createdAt: { $gte: thirtyDaysAgo } } },
+      {
+        $group: {
+          _id: { $dateToString: { format: '%Y-%m-%d', date: '$createdAt' } },
+          totalSales: { $sum: '$total' },
+          orderCount: { $sum: 1 },
+        },
+      },
+      { $sort: { _id: 1 } },
+    ]);
+
+    // Get top selling products
+    const topProducts = await Order.aggregate([
+      { $unwind: '$items' },
+      {
+        $group: {
+          _id: '$items.productId',
+          productName: { $first: '$items.productName' },
+          totalQuantity: { $sum: '$items.quantity' },
+          totalRevenue: { $sum: '$items.subtotal' },
+        },
+      },
+      { $sort: { totalQuantity: -1 } },
+      { $limit: 5 },
+    ]);
+
+    return sendResponse(res, 200, {
+      products: {
+        total: totalProducts,
+        active: activeProducts,
+        outOfStock: outOfStockProducts,
+      },
+      categories: totalCategories,
+      users: totalUsers,
+      orders: {
+        total: totalOrders,
+        byStatus: ordersByStatus.reduce((acc, item) => {
+          acc[item._id] = item.count;
+          return acc;
+        }, {}),
+      },
+      sales: {
+        total: totalSales,
+        byDay: salesByDay,
+      },
+      topProducts,
+    });
+  } catch (error) {
+    return sendResponse(res, 500, null, null, error.message);
+  }
+});
+
+// Admin: Get all orders (for admin view)
+router.get('/admin/orders', async (req, res) => {
+  try {
+    const page = parseInt(req.query.page, 10) || 1;
+    const limit = parseInt(req.query.limit, 10) || 20;
+    const skip = (page - 1) * limit;
+    const { status, search } = req.query;
+
+    const filter = {};
+    if (status && status !== 'all') {
+      filter.status = status;
+    }
+
+    const [orders, total] = await Promise.all([
+      Order.find(filter).skip(skip).limit(limit).sort({ createdAt: -1 }),
+      Order.countDocuments(filter),
+    ]);
+
+    // Enrich orders with user information
+    const userIds = [...new Set(orders.map((o) => o.userId))];
+    const users = await User.find({ id: { $in: userIds } });
+    const userMap = users.reduce((map, user) => {
+      map[user.id] = { username: user.username, email: user.email };
+      return map;
+    }, {});
+
+    const enrichedOrders = orders.map((order) => ({
+      ...order.toObject(),
+      user: userMap[order.userId] || { username: 'Unknown', email: '' },
+    }));
+
+    return sendResponse(res, 200, {
+      orders: enrichedOrders,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit),
+      },
+    });
+  } catch (error) {
+    return sendResponse(res, 500, null, null, error.message);
+  }
+});
+
+// Admin: Get recent orders
+router.get('/admin/orders/recent', async (req, res) => {
+  try {
+    const limit = parseInt(req.query.limit, 10) || 10;
+    const orders = await Order.find().sort({ createdAt: -1 }).limit(limit);
+
+    // Enrich with user info
+    const userIds = [...new Set(orders.map((o) => o.userId))];
+    const users = await User.find({ id: { $in: userIds } });
+    const userMap = users.reduce((map, user) => {
+      map[user.id] = { username: user.username, email: user.email };
+      return map;
+    }, {});
+
+    const enrichedOrders = orders.map((order) => ({
+      ...order.toObject(),
+      user: userMap[order.userId] || { username: 'Unknown', email: '' },
+    }));
+
+    return sendResponse(res, 200, enrichedOrders);
+  } catch (error) {
+    return sendResponse(res, 500, null, null, error.message);
+  }
+});
+
+// Admin: Get all customers
+router.get('/admin/customers', async (req, res) => {
+  try {
+    const page = parseInt(req.query.page, 10) || 1;
+    const limit = parseInt(req.query.limit, 10) || 20;
+    const skip = (page - 1) * limit;
+    const { search } = req.query;
+
+    let filter = {};
+    if (search) {
+      filter = {
+        $or: [
+          { username: { $regex: search, $options: 'i' } },
+          { email: { $regex: search, $options: 'i' } },
+          { firstName: { $regex: search, $options: 'i' } },
+          { lastName: { $regex: search, $options: 'i' } },
+        ],
+      };
+    }
+
+    const [users, total] = await Promise.all([
+      User.find(filter).select('-password').skip(skip).limit(limit).sort({ createdAt: -1 }),
+      User.countDocuments(filter),
+    ]);
+
+    // Get order counts for each user
+    const userIds = users.map((u) => u.id);
+    const orderCounts = await Order.aggregate([
+      { $match: { userId: { $in: userIds } } },
+      {
+        $group: {
+          _id: '$userId',
+          orderCount: { $sum: 1 },
+          totalSpent: { $sum: '$total' },
+        },
+      },
+    ]);
+
+    const orderMap = orderCounts.reduce((map, item) => {
+      map[item._id] = { orderCount: item.orderCount, totalSpent: item.totalSpent };
+      return map;
+    }, {});
+
+    const enrichedUsers = users.map((user) => ({
+      ...user.toObject(),
+      orderCount: orderMap[user.id]?.orderCount || 0,
+      totalSpent: orderMap[user.id]?.totalSpent || 0,
+    }));
+
+    return sendResponse(res, 200, {
+      customers: enrichedUsers,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit),
+      },
+    });
+  } catch (error) {
+    return sendResponse(res, 500, null, null, error.message);
+  }
+});
+
+// Admin: Get single customer with order history
+router.get('/admin/customers/:id', async (req, res) => {
+  try {
+    const user = await User.findOne({ id: parseInt(req.params.id, 10) }).select('-password');
+    if (!user) {
+      return sendResponse(res, 404, null, null, 'Customer not found');
+    }
+
+    const orders = await Order.find({ userId: user.id }).sort({ createdAt: -1 });
+    const totalSpent = orders.reduce((sum, order) => sum + order.total, 0);
+
+    return sendResponse(res, 200, {
+      ...user.toObject(),
+      orders,
+      orderCount: orders.length,
+      totalSpent,
+    });
+  } catch (error) {
+    return sendResponse(res, 500, null, null, error.message);
+  }
+});
+
+// Admin: Bulk update products (activate/deactivate)
+router.put('/admin/products/bulk', async (req, res) => {
+  try {
+    const { productIds, action } = req.body;
+
+    if (!productIds || !Array.isArray(productIds) || productIds.length === 0) {
+      return sendResponse(res, 400, null, null, 'productIds must be a non-empty array');
+    }
+
+    if (!['activate', 'deactivate'].includes(action)) {
+      return sendResponse(res, 400, null, null, 'action must be "activate" or "deactivate"');
+    }
+
+    const result = await Product.updateMany(
+      { id: { $in: productIds.map((id) => parseInt(id, 10)) } },
+      { $set: { active: action === 'activate' } }
+    );
+
+    return sendResponse(
+      res,
+      200,
+      { modifiedCount: result.modifiedCount },
+      `${result.modifiedCount} products ${action}d successfully`
+    );
+  } catch (error) {
+    return sendResponse(res, 500, null, null, error.message);
+  }
+});
+
+// Admin: Get all products including inactive (for admin management)
+router.get('/admin/products', async (req, res) => {
+  try {
+    const { categoryId, search, active, inStock } = req.query;
+    const filter = {};
+
+    if (categoryId) {
+      filter.categoryId = parseInt(categoryId, 10);
+    }
+    if (search) {
+      filter.$text = { $search: search };
+    }
+    if (active !== undefined) {
+      filter.active = active === 'true';
+    }
+    if (inStock === 'true') {
+      filter.stock = { $gt: 0 };
+    } else if (inStock === 'false') {
+      filter.stock = 0;
+    }
+
+    const page = parseInt(req.query.page, 10) || 1;
+    const limit = parseInt(req.query.limit, 10) || 20;
+    const skip = (page - 1) * limit;
+
+    const [products, total] = await Promise.all([
+      Product.find(filter).skip(skip).limit(limit).sort({ createdAt: -1 }),
+      Product.countDocuments(filter),
+    ]);
+
+    // Get category names
+    const categoryIds = [...new Set(products.map((p) => p.categoryId))];
+    const categories = await Category.find({ id: { $in: categoryIds } });
+    const categoryMap = categories.reduce((map, cat) => {
+      map[cat.id] = cat.name;
+      return map;
+    }, {});
+
+    const enrichedProducts = products.map((product) => ({
+      ...product.toObject(),
+      categoryName: categoryMap[product.categoryId] || 'Unknown',
+    }));
+
+    return sendResponse(res, 200, {
+      products: enrichedProducts,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit),
+      },
+    });
+  } catch (error) {
+    return sendResponse(res, 500, null, null, error.message);
+  }
+});
+
+// Admin: Update product stock
+router.put('/admin/products/:id/stock', async (req, res) => {
+  try {
+    const { stock } = req.body;
+
+    if (stock === undefined || stock < 0) {
+      return sendResponse(res, 400, null, null, 'Stock must be a non-negative number');
+    }
+
+    const product = await Product.findOneAndUpdate(
+      { id: parseInt(req.params.id, 10) },
+      { $set: { stock: parseInt(stock, 10) } },
+      { new: true }
+    );
+
+    if (!product) {
+      return sendResponse(res, 404, null, null, 'Product not found');
+    }
+
+    return sendResponse(res, 200, product, 'Stock updated successfully');
   } catch (error) {
     return sendResponse(res, 500, null, null, error.message);
   }
