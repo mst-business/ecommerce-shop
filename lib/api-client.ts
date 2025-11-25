@@ -402,10 +402,24 @@ class APIClient {
     return this.request('/users/profile');
   }
 
-  async updateProfile(profileData: Partial<User>): Promise<{ data: User }> {
-    return this.request('/users/profile', {
+  async updateProfile(profileData: Partial<User>): Promise<{ data: User; message?: string }> {
+    const result = await this.request<{ data: User; message?: string }>('/users/profile', {
       method: 'PUT',
       body: JSON.stringify(profileData),
+    });
+    
+    // Update local storage with new user data
+    if (typeof window !== 'undefined' && result.data) {
+      localStorage.setItem('user', JSON.stringify(result.data));
+    }
+    
+    return result;
+  }
+
+  async changePassword(currentPassword: string, newPassword: string): Promise<{ message?: string }> {
+    return this.request('/users/password', {
+      method: 'PUT',
+      body: JSON.stringify({ currentPassword, newPassword }),
     });
   }
 

@@ -827,6 +827,39 @@ router.put('/users/profile', authenticate, async (req, res) => {
   }
 });
 
+// Change password
+router.put('/users/password', authenticate, async (req, res) => {
+  const { currentPassword, newPassword } = req.body;
+
+  if (!currentPassword || !newPassword) {
+    return sendResponse(res, 400, null, null, 'Current password and new password are required');
+  }
+
+  if (newPassword.length < 6) {
+    return sendResponse(res, 400, null, null, 'New password must be at least 6 characters');
+  }
+
+  try {
+    const user = await User.findOne({ id: req.userId });
+    if (!user) {
+      return sendResponse(res, 404, null, null, 'User not found');
+    }
+
+    const isValidPassword = await bcrypt.compare(currentPassword, user.password);
+    if (!isValidPassword) {
+      return sendResponse(res, 401, null, null, 'Current password is incorrect');
+    }
+
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+    user.password = hashedPassword;
+    await user.save();
+
+    return sendResponse(res, 200, null, 'Password changed successfully');
+  } catch (error) {
+    return sendResponse(res, 500, null, null, error.message);
+  }
+});
+
 // ============================
 // Admin Endpoints (Protected by admin role)
 // ============================
