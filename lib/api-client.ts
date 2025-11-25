@@ -15,8 +15,29 @@ export interface Product {
   stock: number;
   image?: string;
   active?: boolean;
+  averageRating?: number;
+  ratingCount?: number;
   createdAt?: string;
   categoryName?: string;
+}
+
+export interface Rating {
+  id: number;
+  userId: number;
+  productId: number;
+  rating: number;
+  review?: string;
+  helpful?: number;
+  createdAt?: string;
+  user?: {
+    username: string;
+    name: string;
+  };
+}
+
+export interface RatingSummary {
+  averageRating: number;
+  ratingCount: number;
 }
 
 export interface Category {
@@ -160,6 +181,8 @@ class APIClient {
     minPrice?: number;
     maxPrice?: number;
     search?: string;
+    minRating?: number;
+    sortBy?: 'newest' | 'rating' | 'price_asc' | 'price_desc';
     page?: number;
     limit?: number;
   }): Promise<{ data: { products: Product[]; pagination?: any } }> {
@@ -196,6 +219,48 @@ class APIClient {
 
   async deleteProduct(id: number): Promise<void> {
     return this.request(`/products/${id}`, {
+      method: 'DELETE',
+    });
+  }
+
+  // Ratings
+  async getProductRatings(
+    productId: number,
+    params?: { page?: number; limit?: number }
+  ): Promise<{
+    data: {
+      ratings: Rating[];
+      summary: RatingSummary;
+      pagination: any;
+    };
+  }> {
+    const queryString = params
+      ? '?' + new URLSearchParams(
+          Object.entries(params)
+            .filter(([_, v]) => v !== undefined)
+            .map(([k, v]) => [k, v.toString()])
+        ).toString()
+      : '';
+    return this.request(`/products/${productId}/ratings${queryString}`);
+  }
+
+  async addRating(
+    productId: number,
+    rating: number,
+    review?: string
+  ): Promise<{ data: Rating; message?: string }> {
+    return this.request(`/products/${productId}/ratings`, {
+      method: 'POST',
+      body: JSON.stringify({ rating, review }),
+    });
+  }
+
+  async getMyRating(productId: number): Promise<{ data: Rating | null }> {
+    return this.request(`/products/${productId}/my-rating`);
+  }
+
+  async deleteRating(productId: number): Promise<void> {
+    return this.request(`/products/${productId}/ratings`, {
       method: 'DELETE',
     });
   }

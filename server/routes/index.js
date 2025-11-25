@@ -216,6 +216,167 @@ router.delete('/products/:id', async (req, res) => {
 });
 
 // ============================
+// Ratings
+// ============================
+
+// Get ratings for a product
+router.get('/products/:id/ratings', async (req, res) => {
+  try {
+    const productId = parseInt(req.params.id, 10);
+    const product = await Product.findOne({ id: productId });
+    if (!product) {
+      return sendResponse(res, 404, null, null, 'Product not found');
+    }
+
+    const page = parseInt(req.query.page, 10) || 1;
+    const limit = parseInt(req.query.limit, 10) || 10;
+    const skip = (page - 1) * limit;
+
+    const [ratings, total] = await Promise.all([
+      Rating.find({ productId }).skip(skip).limit(limit).sort({ createdAt: -1 }),
+      Rating.countDocuments({ productId }),
+    ]);
+
+    // Enrich ratings with user info
+    const userIds = [...new Set(ratings.map((r) => r.userId))];
+    const users = await User.find({ id: { $in: userIds } }).select('id username firstName lastName');
+    const userMap = users.reduce((map, user) => {
+      map[user.id] = {
+        username: user.username,
+        name: [user.firstName, user.lastName].filter(Boolean).join(' ') || user.username,
+      };
+      return map;
+    }, {});
+
+    const enrichedRatings = ratings.map((rating) => ({
+      ...rating.toObject(),
+      user: userMap[rating.userId] || { username: 'Anonymous', name: 'Anonymous' },
+    }));
+
+    return sendResponse(res, 200, {
+      ratings: enrichedRatings,
+      summary: {
+        averageRating: product.averageRating,
+        ratingCount: product.ratingCount,
+      },
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit),
+      },
+    });
+  } catch (error) {
+    return sendResponse(res, 500, null, null, error.message);
+  }
+});
+
+// Add or update a rating for a product
+router.post('/products/:id/ratings', authenticate, async (req, res) => {
+  const { rating, review } = req.body;
+
+  if (!rating || rating < 1 || rating > 5) {
+    return sendResponse(res, 400, null, null, 'Rating must be between 1 and 5');
+  }
+
+  try {
+    const productId = parseInt(req.params.id, 10);
+    const product = await Product.findOne({ id: productId });
+    if (!product) {
+      return sendResponse(res, 404, null, null, 'Product not found');
+    }
+
+    // Check if user has purchased this product (optional - can be removed if you want anyone to rate)
+    const hasOrdered = await Order.exists({
+      userId: req.userId,
+      'items.productId': productId,
+      status: { $in: ['delivered', 'shipped', 'processing'] },
+    });
+
+    // Check if user already rated this product
+    let existingRating = await Rating.findOne({ userId: req.userId, productId });
+
+    if (existingRating) {
+      // Update existing rating
+      const oldRating = existingRating.rating;
+      existingRating.rating = rating;
+      existingRating.review = review || existingRating.review;
+      await existingRating.save();
+
+      // Recalculate average rating
+      const newAverage =
+        (product.averageRating * product.ratingCount - oldRating + rating) / product.ratingCount;
+      product.averageRating = Math.round(newAverage * 10) / 10;
+      await product.save();
+
+      return sendResponse(res, 200, existingRating, 'Rating updated successfully');
+    } else {
+      // Create new rating
+      const newRating = await Rating.create({
+        id: await getNextSequence('rating'),
+        userId: req.userId,
+        productId,
+        rating,
+        review: review || '',
+      });
+
+      // Update product average rating
+      const newCount = product.ratingCount + 1;
+      const newAverage = (product.averageRating * product.ratingCount + rating) / newCount;
+      product.averageRating = Math.round(newAverage * 10) / 10;
+      product.ratingCount = newCount;
+      await product.save();
+
+      return sendResponse(res, 201, newRating, 'Rating added successfully');
+    }
+  } catch (error) {
+    return sendResponse(res, 500, null, null, error.message);
+  }
+});
+
+// Get user's rating for a product
+router.get('/products/:id/my-rating', authenticate, async (req, res) => {
+  try {
+    const productId = parseInt(req.params.id, 10);
+    const rating = await Rating.findOne({ userId: req.userId, productId });
+    return sendResponse(res, 200, rating);
+  } catch (error) {
+    return sendResponse(res, 500, null, null, error.message);
+  }
+});
+
+// Delete a rating
+router.delete('/products/:id/ratings', authenticate, async (req, res) => {
+  try {
+    const productId = parseInt(req.params.id, 10);
+    const rating = await Rating.findOne({ userId: req.userId, productId });
+
+    if (!rating) {
+      return sendResponse(res, 404, null, null, 'Rating not found');
+    }
+
+    const product = await Product.findOne({ id: productId });
+    if (product && product.ratingCount > 0) {
+      const newCount = product.ratingCount - 1;
+      if (newCount === 0) {
+        product.averageRating = 0;
+      } else {
+        const newAverage =
+          (product.averageRating * product.ratingCount - rating.rating) / newCount;
+        product.averageRating = Math.round(newAverage * 10) / 10;
+      }
+      product.ratingCount = newCount;
+      await product.save();
+    }
+
+    await Rating.deleteOne({ _id: rating._id });
+    return sendResponse(res, 200, null, 'Rating deleted successfully');
+  } catch (error) {
+    return sendResponse(res, 500, null, null, error.message);
+  }
+});
+
+// ============================
 // Categories
 // ============================
 router.get('/categories', async (req, res) => {
