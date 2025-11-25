@@ -6,6 +6,7 @@ const Category = require('../models/Category');
 const Cart = require('../models/Cart');
 const Order = require('../models/Order');
 const User = require('../models/User');
+const Rating = require('../models/Rating');
 const { getNextSequence } = require('../utils/getNextSequence');
 
 const router = express.Router();
@@ -35,12 +36,35 @@ function authenticate(req, res, next) {
   next();
 }
 
+// Admin authentication middleware - checks if user is authenticated AND has admin role
+async function authenticateAdmin(req, res, next) {
+  const userId = req.headers['x-user-id'] || req.body.userId;
+  if (!userId) {
+    return sendResponse(res, 401, null, null, 'Authentication required');
+  }
+  
+  try {
+    const user = await User.findOne({ id: parseInt(userId, 10) });
+    if (!user) {
+      return sendResponse(res, 401, null, null, 'User not found');
+    }
+    if (user.role !== 'admin') {
+      return sendResponse(res, 403, null, null, 'Admin access required');
+    }
+    req.userId = user.id;
+    req.userRole = user.role;
+    next();
+  } catch (error) {
+    return sendResponse(res, 500, null, null, error.message);
+  }
+}
+
 // ============================
 // Products
 // ============================
 router.get('/products', async (req, res) => {
   try {
-    const { categoryId, minPrice, maxPrice, search, includeOutOfStock } = req.query;
+    const { categoryId, minPrice, maxPrice, search, includeOutOfStock, minRating, sortBy } = req.query;
     const filter = {};
 
     // By default, only show active products with stock > 0 for customers
@@ -61,13 +85,26 @@ router.get('/products', async (req, res) => {
     if (search) {
       filter.$text = { $search: search };
     }
+    if (minRating) {
+      filter.averageRating = { $gte: parseFloat(minRating) };
+    }
 
     const page = parseInt(req.query.page, 10) || 1;
     const limit = parseInt(req.query.limit, 10) || 10;
     const skip = (page - 1) * limit;
 
+    // Determine sort order
+    let sortOrder = { createdAt: -1 };
+    if (sortBy === 'rating') {
+      sortOrder = { averageRating: -1, ratingCount: -1 };
+    } else if (sortBy === 'price_asc') {
+      sortOrder = { price: 1 };
+    } else if (sortBy === 'price_desc') {
+      sortOrder = { price: -1 };
+    }
+
     const [products, total] = await Promise.all([
-      Product.find(filter).skip(skip).limit(limit).sort({ createdAt: -1 }),
+      Product.find(filter).skip(skip).limit(limit).sort(sortOrder),
       Product.countDocuments(filter),
     ]);
 
@@ -630,11 +667,11 @@ router.put('/users/profile', authenticate, async (req, res) => {
 });
 
 // ============================
-// Admin Endpoints
+// Admin Endpoints (Protected by admin role)
 // ============================
 
 // Admin: Get dashboard statistics
-router.get('/admin/stats', async (req, res) => {
+router.get('/admin/stats', authenticateAdmin, async (req, res) => {
   try {
     const [
       totalProducts,
@@ -720,7 +757,7 @@ router.get('/admin/stats', async (req, res) => {
 });
 
 // Admin: Get all orders (for admin view)
-router.get('/admin/orders', async (req, res) => {
+router.get('/admin/orders', authenticateAdmin, async (req, res) => {
   try {
     const page = parseInt(req.query.page, 10) || 1;
     const limit = parseInt(req.query.limit, 10) || 20;
@@ -765,7 +802,7 @@ router.get('/admin/orders', async (req, res) => {
 });
 
 // Admin: Get recent orders
-router.get('/admin/orders/recent', async (req, res) => {
+router.get('/admin/orders/recent', authenticateAdmin, async (req, res) => {
   try {
     const limit = parseInt(req.query.limit, 10) || 10;
     const orders = await Order.find().sort({ createdAt: -1 }).limit(limit);
@@ -790,7 +827,7 @@ router.get('/admin/orders/recent', async (req, res) => {
 });
 
 // Admin: Get all customers
-router.get('/admin/customers', async (req, res) => {
+router.get('/admin/customers', authenticateAdmin, async (req, res) => {
   try {
     const page = parseInt(req.query.page, 10) || 1;
     const limit = parseInt(req.query.limit, 10) || 20;
@@ -853,7 +890,7 @@ router.get('/admin/customers', async (req, res) => {
 });
 
 // Admin: Get single customer with order history
-router.get('/admin/customers/:id', async (req, res) => {
+router.get('/admin/customers/:id', authenticateAdmin, async (req, res) => {
   try {
     const user = await User.findOne({ id: parseInt(req.params.id, 10) }).select('-password');
     if (!user) {
@@ -875,7 +912,7 @@ router.get('/admin/customers/:id', async (req, res) => {
 });
 
 // Admin: Bulk update products (activate/deactivate)
-router.put('/admin/products/bulk', async (req, res) => {
+router.put('/admin/products/bulk', authenticateAdmin, async (req, res) => {
   try {
     const { productIds, action } = req.body;
 
@@ -904,7 +941,7 @@ router.put('/admin/products/bulk', async (req, res) => {
 });
 
 // Admin: Get all products including inactive (for admin management)
-router.get('/admin/products', async (req, res) => {
+router.get('/admin/products', authenticateAdmin, async (req, res) => {
   try {
     const { categoryId, search, active, inStock } = req.query;
     const filter = {};
@@ -961,7 +998,7 @@ router.get('/admin/products', async (req, res) => {
 });
 
 // Admin: Update product stock
-router.put('/admin/products/:id/stock', async (req, res) => {
+router.put('/admin/products/:id/stock', authenticateAdmin, async (req, res) => {
   try {
     const { stock } = req.body;
 

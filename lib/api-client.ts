@@ -65,6 +65,7 @@ export interface User {
   email: string;
   firstName?: string;
   lastName?: string;
+  role?: 'customer' | 'admin';
   createdAt?: string;
 }
 
@@ -352,6 +353,11 @@ class APIClient {
     if (typeof window === 'undefined') return null;
     const userStr = localStorage.getItem('user');
     return userStr ? JSON.parse(userStr) : null;
+  }
+
+  isAdmin(): boolean {
+    const user = this.getCurrentUser();
+    return user?.role === 'admin';
   }
 
   // Admin Methods

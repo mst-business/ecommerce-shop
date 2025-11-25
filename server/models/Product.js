@@ -10,11 +10,14 @@ const ProductSchema = new mongoose.Schema(
     stock: { type: Number, default: 0 },
     image: { type: String },
     active: { type: Boolean, default: true, index: true },
+    averageRating: { type: Number, default: 0, min: 0, max: 5 },
+    ratingCount: { type: Number, default: 0 },
   },
   { timestamps: true }
 );
 
 ProductSchema.index({ name: 'text', description: 'text' });
+ProductSchema.index({ averageRating: -1 }); // Index for sorting by rating
 
 module.exports = mongoose.model('Product', ProductSchema);
 
