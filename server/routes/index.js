@@ -713,6 +713,113 @@ router.put('/orders/:id/status', authenticate, async (req, res) => {
 });
 
 // ============================
+// Guest Orders (No Authentication Required)
+// ============================
+
+// Create a guest order
+router.post('/orders/guest', async (req, res) => {
+  const validation = validateRequired(req.body, ['items', 'shippingAddress', 'guestEmail']);
+  if (!validation.valid) {
+    return sendResponse(res, 400, null, null, validation.error);
+  }
+
+  try {
+    const { items, shippingAddress, guestEmail, guestPhone, paymentMethod } = req.body;
+    
+    // Validate email format
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(guestEmail)) {
+      return sendResponse(res, 400, null, null, 'Invalid email format');
+    }
+
+    if (!Array.isArray(items) || items.length === 0) {
+      return sendResponse(res, 400, null, null, 'Items must be a non-empty array');
+    }
+
+    // Validate shipping address
+    const requiredAddressFields = ['fullName', 'address', 'city', 'state', 'zipCode', 'country'];
+    const missingAddressFields = requiredAddressFields.filter(field => !shippingAddress[field]);
+    if (missingAddressFields.length > 0) {
+      return sendResponse(res, 400, null, null, `Missing shipping address fields: ${missingAddressFields.join(', ')}`);
+    }
+
+    const orderItems = [];
+    let total = 0;
+
+    for (const item of items) {
+      if (!item.productId || !item.quantity) {
+        return sendResponse(res, 400, null, null, 'Each item must have productId and quantity');
+      }
+
+      const product = await Product.findOne({ id: parseInt(item.productId, 10) });
+      if (!product) {
+        return sendResponse(res, 400, null, null, `Product ${item.productId} not found`);
+      }
+      if (product.stock < item.quantity) {
+        return sendResponse(res, 400, null, null, `Insufficient stock for product ${product.name}`);
+      }
+
+      const itemTotal = product.price * item.quantity;
+      total += itemTotal;
+
+      orderItems.push({
+        productId: product.id,
+        productName: product.name,
+        quantity: item.quantity,
+        price: product.price,
+        subtotal: itemTotal,
+      });
+
+      // Reduce stock
+      product.stock -= item.quantity;
+      await product.save();
+    }
+
+    const newOrder = await Order.create({
+      id: await getNextSequence('order'),
+      userId: null, // No user ID for guest orders
+      guestEmail,
+      guestPhone: guestPhone || '',
+      isGuest: true,
+      items: orderItems,
+      total,
+      status: 'pending',
+      shippingAddress,
+      paymentMethod: paymentMethod || 'credit_card',
+    });
+
+    return sendResponse(res, 201, newOrder, 'Order placed successfully! Check your email for confirmation.');
+  } catch (error) {
+    return sendResponse(res, 500, null, null, error.message);
+  }
+});
+
+// Get guest order by ID and email (for order tracking)
+router.get('/orders/guest/:id', async (req, res) => {
+  const { email } = req.query;
+  
+  if (!email) {
+    return sendResponse(res, 400, null, null, 'Email is required to view guest order');
+  }
+
+  try {
+    const order = await Order.findOne({ 
+      id: parseInt(req.params.id, 10),
+      guestEmail: email,
+      isGuest: true
+    });
+
+    if (!order) {
+      return sendResponse(res, 404, null, null, 'Order not found or email does not match');
+    }
+
+    return sendResponse(res, 200, order);
+  } catch (error) {
+    return sendResponse(res, 500, null, null, error.message);
+  }
+});
+
+// ============================
 // Users
 // ============================
 router.post('/users/register', async (req, res) => {

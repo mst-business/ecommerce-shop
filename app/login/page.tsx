@@ -3,20 +3,23 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { api } from '@/lib/api-client'
+import { useAuth } from '@/contexts/AuthContext'
+import { useCart } from '@/contexts/CartContext'
 
 export default function LoginPage() {
   const router = useRouter()
+  const { isAuthenticated, login } = useAuth()
+  const { refreshCart } = useCart()
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
   useEffect(() => {
-    if (api.isAuthenticated()) {
+    if (isAuthenticated) {
       router.push('/')
     }
-  }, [])
+  }, [isAuthenticated, router])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -24,12 +27,10 @@ export default function LoginPage() {
     setError('')
 
     try {
-      const data = await api.login(username, password)
-      if (data.data?.user) {
-        router.push('/')
-      } else {
-        setError('Login failed')
-      }
+      await login(username, password)
+      // Refresh cart to load user's server cart
+      await refreshCart()
+      router.push('/')
     } catch (err: any) {
       setError(err.message || 'Login failed')
     } finally {

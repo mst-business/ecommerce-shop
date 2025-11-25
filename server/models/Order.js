@@ -14,7 +14,11 @@ const OrderItemSchema = new mongoose.Schema(
 const OrderSchema = new mongoose.Schema(
   {
     id: { type: Number, unique: true, index: true },
-    userId: { type: Number, required: true, index: true },
+    userId: { type: Number, index: true }, // Optional for guest orders
+    // Guest order fields
+    guestEmail: { type: String, index: true },
+    guestPhone: { type: String },
+    isGuest: { type: Boolean, default: false },
     items: { type: [OrderItemSchema], default: [] },
     total: { type: Number, required: true },
     status: {

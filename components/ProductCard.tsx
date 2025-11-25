@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { Product } from '@/lib/api-client'
-import { api } from '@/lib/api-client'
+import { useCart } from '@/contexts/CartContext'
 import { useState } from 'react'
 
 interface ProductCardProps {
@@ -35,22 +35,24 @@ function StarRating({ rating, count }: { rating: number; count?: number }) {
 }
 
 export default function ProductCard({ product }: ProductCardProps) {
+  const { addToCart } = useCart()
   const [adding, setAdding] = useState(false)
+  const [showToast, setShowToast] = useState(false)
 
   const handleAddToCart = async (e: React.MouseEvent) => {
     e.preventDefault()
     e.stopPropagation()
 
-    if (!api.isAuthenticated()) {
-      alert('Please login to add items to cart')
-      window.location.href = '/login'
-      return
-    }
-
     setAdding(true)
     try {
-      await api.addToCart(product.id, 1)
-      alert('Product added to cart!')
+      await addToCart(product.id, 1, {
+        name: product.name,
+        price: product.price,
+        image: product.image,
+      })
+      // Show success toast
+      setShowToast(true)
+      setTimeout(() => setShowToast(false), 2000)
     } catch (error: any) {
       alert(error.message || 'Failed to add to cart')
     } finally {
@@ -60,7 +62,16 @@ export default function ProductCard({ product }: ProductCardProps) {
 
   return (
     <Link href={`/product/${product.id}`}>
-      <div className="bg-white rounded-xl shadow-md overflow-hidden hover:shadow-xl transition-all duration-300 cursor-pointer group">
+      <div className="bg-white rounded-xl shadow-md overflow-hidden hover:shadow-xl transition-all duration-300 cursor-pointer group relative">
+        {/* Success Toast */}
+        {showToast && (
+          <div className="absolute top-2 left-2 right-2 z-20 bg-green-500 text-white px-3 py-2 rounded-lg text-sm font-medium flex items-center gap-2 shadow-lg animate-pulse">
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+            </svg>
+            Added to cart!
+          </div>
+        )}
         <div className="aspect-square bg-gray-100 relative overflow-hidden">
           <img
             src={product.image || '/placeholder.jpg'}

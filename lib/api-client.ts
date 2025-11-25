@@ -63,13 +63,30 @@ export interface Cart {
 
 export interface Order {
   id: number;
-  userId: number;
+  userId?: number;
+  guestEmail?: string;
   items: OrderItem[];
   total: number;
   status: string;
   shippingAddress?: any;
   paymentMethod?: string;
   createdAt: string;
+  isGuest?: boolean;
+}
+
+export interface GuestOrderData {
+  items: Array<{ productId: number; quantity: number; price?: number; productName?: string }>;
+  shippingAddress: {
+    fullName: string;
+    address: string;
+    city: string;
+    state: string;
+    zipCode: string;
+    country: string;
+  };
+  guestEmail: string;
+  guestPhone?: string;
+  paymentMethod: string;
 }
 
 export interface OrderItem {
@@ -346,6 +363,17 @@ class APIClient {
       method: 'POST',
       body: JSON.stringify(orderData),
     });
+  }
+
+  async createGuestOrder(orderData: GuestOrderData): Promise<{ data: Order; message?: string }> {
+    return this.request('/orders/guest', {
+      method: 'POST',
+      body: JSON.stringify(orderData),
+    });
+  }
+
+  async getGuestOrder(orderId: number, email: string): Promise<{ data: Order }> {
+    return this.request(`/orders/guest/${orderId}?email=${encodeURIComponent(email)}`);
   }
 
   async updateOrderStatus(id: number, status: string): Promise<{ data: Order }> {

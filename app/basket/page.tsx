@@ -1,64 +1,45 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
-import { api, Cart, CartItem } from '@/lib/api-client'
+import { useCart } from '@/contexts/CartContext'
 
 export default function BasketPage() {
-  const router = useRouter()
-  const [cart, setCart] = useState<Cart | null>(null)
-  const [loading, setLoading] = useState(true)
+  const { cart, loading, updateQuantity, removeFromCart, clearCart } = useCart()
+  const [updating, setUpdating] = useState<number | null>(null)
 
-  useEffect(() => {
-    if (!api.isAuthenticated()) {
-      router.push('/login')
-      return
-    }
-    loadCart()
-  }, [])
-
-  const loadCart = async () => {
-    try {
-      const data = await api.getCart()
-      setCart(data.data)
-    } catch (error) {
-      console.error('Error loading cart:', error)
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  const updateQuantity = async (productId: number, quantity: number) => {
+  const handleUpdateQuantity = async (productId: number, quantity: number) => {
     if (quantity < 1) {
-      removeItem(productId)
+      handleRemoveItem(productId)
       return
     }
 
+    setUpdating(productId)
     try {
-      await api.updateCartItem(productId, quantity)
-      await loadCart()
+      await updateQuantity(productId, quantity)
     } catch (error: any) {
       alert(error.message || 'Failed to update cart')
-      await loadCart()
+    } finally {
+      setUpdating(null)
     }
   }
 
-  const removeItem = async (productId: number) => {
+  const handleRemoveItem = async (productId: number) => {
+    setUpdating(productId)
     try {
-      await api.removeFromCart(productId)
-      await loadCart()
+      await removeFromCart(productId)
     } catch (error: any) {
       alert(error.message || 'Failed to remove item')
+    } finally {
+      setUpdating(null)
     }
   }
 
-  const clearCart = async () => {
+  const handleClearCart = async () => {
     if (!confirm('Are you sure you want to clear your cart?')) return
 
     try {
-      await api.clearCart()
-      await loadCart()
+      await clearCart()
     } catch (error: any) {
       alert(error.message || 'Failed to clear cart')
     }
@@ -125,8 +106,9 @@ export default function BasketPage() {
                     type="number"
                     min="1"
                     value={item.quantity}
-                    onChange={(e) => updateQuantity(item.productId, Number(e.target.value))}
-                    className="w-20 px-3 py-1 border border-gray-300 rounded focus:ring-2 focus:ring-primary-500"
+                    onChange={(e) => handleUpdateQuantity(item.productId, Number(e.target.value))}
+                    disabled={updating === item.productId}
+                    className="w-20 px-3 py-1 border border-gray-300 rounded focus:ring-2 focus:ring-primary-500 disabled:bg-gray-100"
                   />
                 </td>
                 <td className="px-6 py-4 font-semibold text-gray-800">
@@ -134,10 +116,11 @@ export default function BasketPage() {
                 </td>
                 <td className="px-6 py-4">
                   <button
-                    onClick={() => removeItem(item.productId)}
-                    className="text-red-600 hover:text-red-800 font-medium"
+                    onClick={() => handleRemoveItem(item.productId)}
+                    disabled={updating === item.productId}
+                    className="text-red-600 hover:text-red-800 font-medium disabled:opacity-50"
                   >
-                    Remove
+                    {updating === item.productId ? 'Removing...' : 'Remove'}
                   </button>
                 </td>
               </tr>
@@ -156,7 +139,7 @@ export default function BasketPage() {
         
         <div className="px-6 py-4 bg-white flex gap-4">
           <button
-            onClick={clearCart}
+            onClick={handleClearCart}
             className="px-6 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700"
           >
             Clear Cart
