@@ -7,13 +7,13 @@ import { ToastProvider } from '@/contexts/ToastContext'
 
 export default function Providers({ children }: { children: ReactNode }) {
   return (
-    <CartProvider>
+    <ToastProvider>
       <AuthProvider>
-        <ToastProvider>
+        <CartProvider>
           {children}
-        </ToastProvider>
+        </CartProvider>
       </AuthProvider>
-    </CartProvider>
+    </ToastProvider>
   )
 }
 

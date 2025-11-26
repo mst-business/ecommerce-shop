@@ -3,6 +3,7 @@
  */
 import { buildQueryString, isClient, safeJsonParse } from './utils';
 import { API_CONFIG, STORAGE_KEYS, OrderStatus } from './constants';
+import { getUserFriendlyError, logError, AppError, ErrorCode } from './errors';
 
 // ============================================
 // Type Definitions
@@ -224,26 +225,79 @@ class APIClient {
 
   private async request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
     const url = `${API_BASE}${endpoint}`;
+    
+    // Check if online (client-side only)
+    if (isClient() && !navigator.onLine) {
+      throw new AppError(
+        'No internet connection. Please check your network.',
+        ErrorCode.NETWORK_ERROR
+      );
+    }
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), API_CONFIG.TIMEOUT);
+
     const config: RequestInit = {
       ...options,
       headers: {
         ...this.getHeaders(),
         ...options.headers,
       },
+      signal: controller.signal,
     };
 
     try {
       const response = await fetch(url, config);
-      const data = await response.json();
+      clearTimeout(timeoutId);
+
+      // Try to parse JSON, but handle cases where response isn't JSON
+      let data;
+      const contentType = response.headers.get('content-type');
+      if (contentType?.includes('application/json')) {
+        data = await response.json();
+      } else {
+        const text = await response.text();
+        data = { error: text || `HTTP error! status: ${response.status}` };
+      }
 
       if (!response.ok) {
-        throw new Error(data.error || `HTTP error! status: ${response.status}`);
+        const errorMessage = data.error || data.message || `Request failed with status ${response.status}`;
+        logError(errorMessage, `API ${options.method || 'GET'} ${endpoint}`);
+        
+        // Throw user-friendly error
+        throw new Error(getUserFriendlyError(errorMessage));
       }
 
       return data;
     } catch (error) {
-      console.error('API Error:', error);
-      throw error;
+      clearTimeout(timeoutId);
+      
+      // Handle abort/timeout
+      if (error instanceof Error && error.name === 'AbortError') {
+        throw new AppError(
+          'Request timed out. Please try again.',
+          ErrorCode.TIMEOUT
+        );
+      }
+      
+      // Handle network errors
+      if (error instanceof TypeError && error.message.includes('fetch')) {
+        throw new AppError(
+          'Unable to connect to the server. Please check your connection.',
+          ErrorCode.NETWORK_ERROR
+        );
+      }
+
+      // Log and re-throw other errors
+      logError(error, `API ${options.method || 'GET'} ${endpoint}`);
+      
+      // If it's already a user-friendly error, just re-throw
+      if (error instanceof AppError) {
+        throw error;
+      }
+      
+      // Convert to user-friendly error
+      throw new Error(getUserFriendlyError(error));
     }
   }
 

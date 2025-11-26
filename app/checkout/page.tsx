@@ -1,18 +1,24 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { api } from '@/lib/api-client'
 import { guestCart } from '@/lib/guest-cart'
 import { useAuth } from '@/contexts/AuthContext'
 import { useCart } from '@/contexts/CartContext'
+import { useToast } from '@/contexts/ToastContext'
+import { validators, validateForm } from '@/lib/validation'
+import { FormField, Input, Select } from '@/components/ui/FormField'
+import { LoadingButton } from '@/components/ui/LoadingButton'
 
 export default function CheckoutPage() {
   const router = useRouter()
   const { isAuthenticated, user } = useAuth()
   const { cart, loading, clearCart } = useCart()
+  const { showToast } = useToast()
   const [submitting, setSubmitting] = useState(false)
+  
   const [formData, setFormData] = useState({
     fullName: '',
     email: '',
@@ -24,6 +30,9 @@ export default function CheckoutPage() {
     country: 'USA',
     paymentMethod: 'credit_card',
   })
+  
+  const [errors, setErrors] = useState<Record<string, string>>({})
+  const [touched, setTouched] = useState<Record<string, boolean>>({})
 
   // Pre-fill form if authenticated
   useEffect(() => {
@@ -43,13 +52,72 @@ export default function CheckoutPage() {
     }
   }, [cart, loading, router])
 
+  const handleChange = useCallback((field: string, value: string) => {
+    setFormData(prev => ({ ...prev, [field]: value }))
+    // Clear error when user starts typing
+    if (errors[field]) {
+      setErrors(prev => ({ ...prev, [field]: '' }))
+    }
+  }, [errors])
+
+  const handleBlur = useCallback((field: string) => {
+    setTouched(prev => ({ ...prev, [field]: true }))
+    
+    // Validate single field on blur
+    const validationRules: Record<string, (value: string) => string | null> = {
+      fullName: (v) => validators.required(v, 'Full name') || validators.minLength(v, 2, 'Full name'),
+      email: validators.email,
+      phone: (v) => validators.phone(v, false),
+      address: (v) => validators.required(v, 'Address'),
+      city: (v) => validators.required(v, 'City'),
+      state: (v) => validators.required(v, 'State'),
+      zipCode: validators.zipCode,
+    }
+    
+    const validator = validationRules[field]
+    if (validator) {
+      const error = validator(formData[field as keyof typeof formData])
+      if (error) {
+        setErrors(prev => ({ ...prev, [field]: error }))
+      }
+    }
+  }, [formData])
+
+  const validateAllFields = (): boolean => {
+    const rules: Record<string, (v: unknown) => string | null> = {
+      fullName: (v) => validators.required(v as string, 'Full name') || validators.minLength(v as string, 2, 'Full name'),
+      address: (v) => validators.required(v as string, 'Address'),
+      city: (v) => validators.required(v as string, 'City'),
+      state: (v) => validators.required(v as string, 'State'),
+      zipCode: (v) => validators.zipCode(v as string),
+    }
+
+    // Add email validation for guests
+    if (!isAuthenticated) {
+      rules.email = (v) => validators.email(v as string)
+      rules.phone = (v) => validators.phone(v as string, false)
+    }
+
+    const { isValid, errors: validationErrors } = validateForm(formData, rules)
+    
+    if (!isValid) {
+      setErrors(validationErrors)
+      // Mark all fields as touched
+      const allTouched: Record<string, boolean> = {}
+      Object.keys(rules).forEach(key => { allTouched[key] = true })
+      setTouched(prev => ({ ...prev, ...allTouched }))
+    }
+    
+    return isValid
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!cart) return
 
-    // Validate email for guest checkout
-    if (!isAuthenticated && !formData.email) {
-      alert('Please enter your email address')
+    // Validate all fields
+    if (!validateAllFields()) {
+      showToast('Please fix the errors in the form', 'error')
       return
     }
 
@@ -75,7 +143,7 @@ export default function CheckoutPage() {
 
         const result = await api.createOrder(orderData)
         await clearCart()
-        alert('Order placed successfully!')
+        showToast('Order placed successfully!', 'success')
         router.push(`/orders?orderId=${result.data.id}`)
       } else {
         // Guest order
@@ -105,11 +173,11 @@ export default function CheckoutPage() {
           orderId: result.data.id,
           email: formData.email
         }))
-        alert('Order placed successfully! You can track your order with your email.')
+        showToast('Order placed successfully!', 'success')
         router.push(`/order-confirmation?orderId=${result.data.id}&email=${encodeURIComponent(formData.email)}`)
       }
-    } catch (error: any) {
-      alert(error.message || 'Failed to place order')
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : 'Failed to place order', 'error')
     } finally {
       setSubmitting(false)
     }
@@ -154,37 +222,43 @@ export default function CheckoutPage() {
           <h2 className="text-2xl font-bold text-gray-800 mb-6">
             {isAuthenticated ? 'Shipping Information' : 'Contact & Shipping Information'}
           </h2>
+          
           <form onSubmit={handleSubmit} className="space-y-4">
             {/* Contact Info for Guests */}
             {!isAuthenticated && (
               <>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Email Address <span className="text-red-500">*</span>
-                  </label>
-                  <input
+                <FormField
+                  label="Email Address"
+                  required
+                  error={errors.email}
+                  touched={touched.email}
+                  hint="We'll send your order confirmation here"
+                >
+                  <Input
                     type="email"
-                    required
                     value={formData.email}
-                    onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                    onChange={(e) => handleChange('email', e.target.value)}
+                    onBlur={() => handleBlur('email')}
                     placeholder="your@email.com"
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500"
+                    error={!!errors.email && touched.email}
                   />
-                  <p className="text-xs text-gray-500 mt-1">We'll send your order confirmation here</p>
-                </div>
+                </FormField>
                 
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Phone Number <span className="text-gray-400">(optional)</span>
-                  </label>
-                  <input
+                <FormField
+                  label="Phone Number"
+                  error={errors.phone}
+                  touched={touched.phone}
+                  hint="Optional - for delivery updates"
+                >
+                  <Input
                     type="tel"
                     value={formData.phone}
-                    onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                    onChange={(e) => handleChange('phone', e.target.value)}
+                    onBlur={() => handleBlur('phone')}
                     placeholder="+1 (555) 000-0000"
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500"
+                    error={!!errors.phone && touched.phone}
                   />
-                </div>
+                </FormField>
 
                 <div className="border-t border-gray-200 pt-4 mt-4">
                   <h3 className="font-medium text-gray-800 mb-4">Shipping Address</h3>
@@ -192,95 +266,113 @@ export default function CheckoutPage() {
               </>
             )}
             
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Full Name
-              </label>
-              <input
+            <FormField
+              label="Full Name"
+              required
+              error={errors.fullName}
+              touched={touched.fullName}
+            >
+              <Input
                 type="text"
-                required
                 value={formData.fullName}
-                onChange={(e) => setFormData({ ...formData, fullName: e.target.value })}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500"
+                onChange={(e) => handleChange('fullName', e.target.value)}
+                onBlur={() => handleBlur('fullName')}
+                placeholder="John Doe"
+                error={!!errors.fullName && touched.fullName}
               />
-            </div>
+            </FormField>
             
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Address
-              </label>
-              <input
+            <FormField
+              label="Address"
+              required
+              error={errors.address}
+              touched={touched.address}
+            >
+              <Input
                 type="text"
-                required
                 value={formData.address}
-                onChange={(e) => setFormData({ ...formData, address: e.target.value })}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500"
+                onChange={(e) => handleChange('address', e.target.value)}
+                onBlur={() => handleBlur('address')}
+                placeholder="123 Main St, Apt 4"
+                error={!!errors.address && touched.address}
               />
-            </div>
+            </FormField>
             
             <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">City</label>
-                <input
-                  type="text"
-                  required
-                  value={formData.city}
-                  onChange={(e) => setFormData({ ...formData, city: e.target.value })}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">State</label>
-                <input
-                  type="text"
-                  required
-                  value={formData.state}
-                  onChange={(e) => setFormData({ ...formData, state: e.target.value })}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500"
-                />
-              </div>
-            </div>
-            
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Zip Code
-              </label>
-              <input
-                type="text"
+              <FormField
+                label="City"
                 required
-                value={formData.zipCode}
-                onChange={(e) => setFormData({ ...formData, zipCode: e.target.value })}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500"
-              />
+                error={errors.city}
+                touched={touched.city}
+              >
+                <Input
+                  type="text"
+                  value={formData.city}
+                  onChange={(e) => handleChange('city', e.target.value)}
+                  onBlur={() => handleBlur('city')}
+                  placeholder="New York"
+                  error={!!errors.city && touched.city}
+                />
+              </FormField>
+              
+              <FormField
+                label="State"
+                required
+                error={errors.state}
+                touched={touched.state}
+              >
+                <Input
+                  type="text"
+                  value={formData.state}
+                  onChange={(e) => handleChange('state', e.target.value)}
+                  onBlur={() => handleBlur('state')}
+                  placeholder="NY"
+                  error={!!errors.state && touched.state}
+                />
+              </FormField>
             </div>
             
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Payment Method
-              </label>
-              <select
+            <FormField
+              label="Zip Code"
+              required
+              error={errors.zipCode}
+              touched={touched.zipCode}
+            >
+              <Input
+                type="text"
+                value={formData.zipCode}
+                onChange={(e) => handleChange('zipCode', e.target.value)}
+                onBlur={() => handleBlur('zipCode')}
+                placeholder="10001"
+                error={!!errors.zipCode && touched.zipCode}
+              />
+            </FormField>
+            
+            <FormField label="Payment Method">
+              <Select
                 value={formData.paymentMethod}
-                onChange={(e) => setFormData({ ...formData, paymentMethod: e.target.value })}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500"
+                onChange={(e) => handleChange('paymentMethod', e.target.value)}
               >
                 <option value="credit_card">Credit Card</option>
                 <option value="debit_card">Debit Card</option>
                 <option value="paypal">PayPal</option>
                 <option value="bank_transfer">Bank Transfer</option>
-              </select>
-            </div>
+              </Select>
+            </FormField>
             
-            <button
+            <LoadingButton
               type="submit"
-              disabled={submitting}
-              className="w-full bg-primary-600 text-white py-3 rounded-lg hover:bg-primary-700 disabled:bg-gray-400 font-semibold"
+              loading={submitting}
+              loadingText="Placing Order..."
+              fullWidth
+              size="lg"
             >
-              {submitting ? 'Placing Order...' : 'Place Order'}
-            </button>
+              Place Order
+            </LoadingButton>
           </form>
         </div>
         
-        <div className="bg-white p-6 rounded-lg shadow-md">
+        <div className="bg-white p-6 rounded-lg shadow-md h-fit">
           <h2 className="text-2xl font-bold text-gray-800 mb-6">Order Summary</h2>
           <div className="space-y-4 mb-6">
             {cart.items.map((item) => (
@@ -304,7 +396,3 @@ export default function CheckoutPage() {
     </div>
   )
 }
-
-
-
-

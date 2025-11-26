@@ -4,6 +4,9 @@ import { useEffect, useState } from 'react'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
 import { api, Product, Category, Rating } from '@/lib/api-client'
+import { useToast } from '@/contexts/ToastContext'
+import { useCart } from '@/contexts/CartContext'
+import { useAuth } from '@/contexts/AuthContext'
 
 // Interactive Star Rating Component
 function StarRatingInput({ 
@@ -186,6 +189,10 @@ function ReviewItem({ rating }: { rating: Rating }) {
 export default function ProductPage() {
   const params = useParams()
   const productId = Number(params.id)
+  const { showToast } = useToast()
+  const { addToCart } = useCart()
+  const { isAuthenticated } = useAuth()
+  
   const [product, setProduct] = useState<Product | null>(null)
   const [category, setCategory] = useState<Category | null>(null)
   const [quantity, setQuantity] = useState(1)
@@ -202,10 +209,10 @@ export default function ProductPage() {
   useEffect(() => {
     loadProduct()
     loadRatings()
-    if (api.isAuthenticated()) {
+    if (isAuthenticated) {
       loadMyRating()
     }
-  }, [productId])
+  }, [productId, isAuthenticated])
 
   const loadProduct = async () => {
     try {
@@ -247,18 +254,18 @@ export default function ProductPage() {
   }
 
   const handleAddToCart = async () => {
-    if (!api.isAuthenticated()) {
-      alert('Please login to add items to cart')
-      window.location.href = '/login'
-      return
-    }
-
+    if (!product) return
+    
     setAdding(true)
     try {
-      await api.addToCart(productId, quantity)
-      alert(`${quantity} item(s) added to cart!`)
-    } catch (error: any) {
-      alert(error.message || 'Failed to add to cart')
+      await addToCart(productId, quantity, {
+        name: product.name,
+        price: product.price,
+        image: product.image
+      })
+      showToast(`${quantity} item(s) added to cart!`, 'success')
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : 'Failed to add to cart', 'error')
     } finally {
       setAdding(false)
     }
@@ -396,7 +403,7 @@ export default function ProductPage() {
             </div>
 
             {/* Rating Form - Only for authenticated users */}
-            {api.isAuthenticated() ? (
+            {isAuthenticated ? (
               <div className="mt-6">
                 <RatingForm 
                   productId={productId} 
