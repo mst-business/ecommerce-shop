@@ -1,4 +1,8 @@
-// Guest Cart Utility - Stores cart in localStorage for non-authenticated users
+/**
+ * Guest Cart Utility - Stores cart in localStorage for non-authenticated users
+ */
+import { STORAGE_KEYS } from './constants';
+import { isClient } from './utils';
 
 export interface GuestCartItem {
   productId: number;
@@ -15,16 +19,14 @@ export interface GuestCart {
   itemCount: number;
 }
 
-const GUEST_CART_KEY = 'guest_cart';
-
 class GuestCartManager {
+  private readonly emptyCart: GuestCart = { items: [], total: 0, itemCount: 0 };
+
   private getStoredCart(): GuestCart {
-    if (typeof window === 'undefined') {
-      return { items: [], total: 0, itemCount: 0 };
-    }
+    if (!isClient()) return this.emptyCart;
     
     try {
-      const stored = localStorage.getItem(GUEST_CART_KEY);
+      const stored = localStorage.getItem(STORAGE_KEYS.GUEST_CART);
       if (stored) {
         return JSON.parse(stored);
       }
@@ -32,14 +34,14 @@ class GuestCartManager {
       console.error('Error reading guest cart:', error);
     }
     
-    return { items: [], total: 0, itemCount: 0 };
+    return this.emptyCart;
   }
 
   private saveCart(cart: GuestCart): void {
-    if (typeof window === 'undefined') return;
+    if (!isClient()) return;
     
     try {
-      localStorage.setItem(GUEST_CART_KEY, JSON.stringify(cart));
+      localStorage.setItem(STORAGE_KEYS.GUEST_CART, JSON.stringify(cart));
       // Dispatch event for cart updates
       window.dispatchEvent(new CustomEvent('guestCartUpdated', { detail: cart }));
     } catch (error) {

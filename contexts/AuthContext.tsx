@@ -2,7 +2,6 @@
 
 import { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react'
 import { api, User } from '@/lib/api-client'
-import { useCart } from './CartContext'
 
 interface AuthContextType {
   isAuthenticated: boolean

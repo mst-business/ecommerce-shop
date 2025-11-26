@@ -1,17 +1,19 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useCallback, useMemo } from 'react'
 import { useRouter, useSearchParams, usePathname } from 'next/navigation'
-import { api, Category } from '@/lib/api-client'
+import { useCategories } from '@/lib/hooks'
+import { SORT_OPTIONS, RATING_FILTER_OPTIONS } from '@/lib/constants'
+import { buildQueryString } from '@/lib/utils'
 
 export default function SearchAndFilters() {
   const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
+  const { categories } = useCategories()
   const [isExpanded, setIsExpanded] = useState(false)
   
   const [search, setSearch] = useState(searchParams.get('search') || '')
-  const [categories, setCategories] = useState<Category[]>([])
   const [selectedCategory, setSelectedCategory] = useState<number | ''>(
     searchParams.get('categoryId') ? Number(searchParams.get('categoryId')) : ''
   )
@@ -20,33 +22,20 @@ export default function SearchAndFilters() {
   const [minRating, setMinRating] = useState(searchParams.get('minRating') || '')
   const [sortBy, setSortBy] = useState(searchParams.get('sortBy') || '')
 
-  useEffect(() => {
-    loadCategories()
-  }, [])
-
-  const loadCategories = async () => {
-    try {
-      const data = await api.getCategories()
-      setCategories(data.data || [])
-    } catch (error) {
-      console.error('Error loading categories:', error)
-    }
-  }
-
-  const applyFilters = () => {
-    const params = new URLSearchParams()
-    if (search) params.set('search', search)
-    if (selectedCategory) params.set('categoryId', selectedCategory.toString())
-    if (minPrice) params.set('minPrice', minPrice)
-    if (maxPrice) params.set('maxPrice', maxPrice)
-    if (minRating) params.set('minRating', minRating)
-    if (sortBy) params.set('sortBy', sortBy)
+  const applyFilters = useCallback(() => {
+    const queryString = buildQueryString({
+      search: search || undefined,
+      categoryId: selectedCategory || undefined,
+      minPrice: minPrice || undefined,
+      maxPrice: maxPrice || undefined,
+      minRating: minRating || undefined,
+      sortBy: sortBy || undefined,
+    })
     
-    const queryString = params.toString()
-    router.push(queryString ? `${pathname}?${queryString}` : pathname)
-  }
+    router.push(`${pathname}${queryString}`)
+  }, [router, pathname, search, selectedCategory, minPrice, maxPrice, minRating, sortBy])
 
-  const clearFilters = () => {
+  const clearFilters = useCallback(() => {
     setSearch('')
     setSelectedCategory('')
     setMinPrice('')
@@ -54,10 +43,13 @@ export default function SearchAndFilters() {
     setMinRating('')
     setSortBy('')
     router.push(pathname)
-  }
+  }, [router, pathname])
 
   const hasActiveFilters = search || selectedCategory || minPrice || maxPrice || minRating || sortBy
-  const activeFilterCount = [search, selectedCategory, minPrice, maxPrice, minRating, sortBy].filter(Boolean).length
+  const activeFilterCount = useMemo(() => 
+    [search, selectedCategory, minPrice, maxPrice, minRating, sortBy].filter(Boolean).length,
+    [search, selectedCategory, minPrice, maxPrice, minRating, sortBy]
+  )
 
   return (
     <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden mb-8">
@@ -93,10 +85,11 @@ export default function SearchAndFilters() {
             }}
             className="px-4 py-3 bg-surface-50 border-0 rounded-xl text-gray-700 focus:outline-none focus:ring-2 focus:ring-primary-500/20 cursor-pointer"
           >
-            <option value="">Sort: Newest</option>
-            <option value="rating">Highest Rated</option>
-            <option value="price_asc">Price: Low to High</option>
-            <option value="price_desc">Price: High to Low</option>
+            {SORT_OPTIONS.map(option => (
+              <option key={option.value} value={option.value}>
+                {option.value === '' ? 'Sort: ' : ''}{option.label}
+              </option>
+            ))}
           </select>
 
           {/* Filter Toggle Button */}
@@ -165,10 +158,11 @@ export default function SearchAndFilters() {
                 onChange={(e) => setMinRating(e.target.value)}
                 className="w-full px-4 py-2.5 bg-surface-50 border-0 rounded-xl text-gray-700 focus:outline-none focus:ring-2 focus:ring-primary-500/20"
               >
-                <option value="">Any Rating</option>
-                <option value="4">4+ Stars</option>
-                <option value="3">3+ Stars</option>
-                <option value="2">2+ Stars</option>
+                {RATING_FILTER_OPTIONS.map(option => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
               </select>
             </div>
             

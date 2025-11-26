@@ -1,69 +1,11 @@
 'use client'
 
-import { useEffect, useState } from 'react'
 import Link from 'next/link'
-import { api, Category } from '@/lib/api-client'
-
-// Category icons mapping
-const categoryIcons: Record<string, string> = {
-  'electronics': '📱',
-  'clothing': '👕',
-  'books': '📚',
-  'home': '🏠',
-  'sports': '⚽',
-  'toys': '🧸',
-  'beauty': '💄',
-  'food': '🍕',
-  'music': '🎵',
-  'games': '🎮',
-  'garden': '🌱',
-  'health': '💊',
-  'jewelry': '💎',
-  'shoes': '👟',
-  'watches': '⌚',
-  'bags': '👜',
-  'furniture': '🪑',
-  'automotive': '🚗',
-  'pet': '🐕',
-  'baby': '👶',
-}
-
-function getCategoryIcon(name: string): string {
-  const lowerName = name.toLowerCase()
-  for (const [key, icon] of Object.entries(categoryIcons)) {
-    if (lowerName.includes(key)) return icon
-  }
-  return '🏷️'
-}
-
-// Gradient colors for category cards
-const gradients = [
-  'from-emerald-400 to-teal-500',
-  'from-amber-400 to-orange-500',
-  'from-sky-400 to-blue-500',
-  'from-rose-400 to-pink-500',
-  'from-violet-400 to-purple-500',
-  'from-lime-400 to-green-500',
-]
+import { useCategories } from '@/lib/hooks'
+import { getCategoryIcon, getCategoryGradient } from '@/lib/constants'
 
 export default function CategoryList() {
-  const [categories, setCategories] = useState<Category[]>([])
-  const [loading, setLoading] = useState(true)
-
-  useEffect(() => {
-    loadCategories()
-  }, [])
-
-  const loadCategories = async () => {
-    try {
-      const data = await api.getCategories()
-      setCategories(data.data || [])
-    } catch (error) {
-      console.error('Error loading categories:', error)
-    } finally {
-      setLoading(false)
-    }
-  }
+  const { categories, loading } = useCategories()
 
   if (loading) {
     return (
@@ -85,7 +27,7 @@ export default function CategoryList() {
           style={{ animationDelay: `${index * 50}ms` }}
         >
           {/* Background Gradient */}
-          <div className={`absolute inset-0 bg-gradient-to-br ${gradients[index % gradients.length]} opacity-90 group-hover:opacity-100 transition-opacity`} />
+          <div className={`absolute inset-0 bg-gradient-to-br ${getCategoryGradient(index)} opacity-90 group-hover:opacity-100 transition-opacity`} />
           
           {/* Content */}
           <div className="relative z-10 flex flex-col items-center text-center text-white">

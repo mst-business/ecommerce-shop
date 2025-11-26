@@ -8,7 +8,7 @@ import { useCart } from '@/contexts/CartContext'
 
 export default function Header() {
   const router = useRouter()
-  const { isAuthenticated, isAdmin, user, logout } = useAuth()
+  const { isAuthenticated, isAdmin, user, loading: authLoading, logout } = useAuth()
   const { cartCount, refreshCart } = useCart()
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
 
@@ -36,8 +36,7 @@ export default function Header() {
 
           {/* Desktop Navigation */}
           <nav className="hidden md:flex items-center gap-1">
-            
-            {!isAuthenticated && (
+            {!authLoading && !isAuthenticated && (
               <Link 
                 href="/track-order" 
                 className="px-4 py-2 text-gray-600 hover:text-primary-600 font-medium rounded-lg hover:bg-primary-50 transition-colors"
@@ -71,7 +70,11 @@ export default function Header() {
               )}
             </Link>
 
-            {isAuthenticated ? (
+            {/* Auth-dependent UI - Only show after auth check completes */}
+            {authLoading ? (
+              // Loading placeholder
+              <div className="w-24 h-10 bg-gray-100 rounded-xl animate-pulse" />
+            ) : isAuthenticated ? (
               <>
                 {/* User Menu */}
                 <div className="relative group">
@@ -204,7 +207,7 @@ export default function Header() {
               >
                 Categories
               </Link>
-              {!isAuthenticated && (
+              {!authLoading && !isAuthenticated && (
                 <>
                   <Link 
                     href="/track-order" 
