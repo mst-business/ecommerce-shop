@@ -10,8 +10,9 @@ const { getNextSequence } = require('../utils/getNextSequence');
 const { sendSuccess } = require('../utils/response');
 const { ERROR_MESSAGES, SUCCESS_MESSAGES } = require('../utils/constants');
 const { asyncHandler, NotFoundError, ValidationError, ConflictError, UnauthorizedError } = require('../middleware/errorHandler');
-const { authenticate } = require('../middleware/auth');
+const { authenticate, generateAccessToken, generateRefreshToken, refreshAccessToken } = require('../middleware/auth');
 const { validateRequired, validateEmail, validatePassword, sanitizeStrings } = require('../middleware/validate');
+const { authLimiter } = require('../middleware/security');
 
 const SALT_ROUNDS = 10;
 
@@ -27,6 +28,7 @@ function sanitizeUser(user) {
  * POST /users/register - Register a new user
  */
 router.post('/register',
+  authLimiter, // Rate limit registration
   validateRequired(['username', 'password', 'email']),
   validateEmail('email'),
   validatePassword('password', 6),
@@ -62,6 +64,7 @@ router.post('/register',
  * POST /users/login - User login
  */
 router.post('/login',
+  authLimiter, // Rate limit login attempts
   validateRequired(['username', 'password']),
   asyncHandler(async (req, res) => {
     const { username, password } = req.body;
@@ -76,10 +79,32 @@ router.post('/login',
       throw new UnauthorizedError(ERROR_MESSAGES.INVALID_CREDENTIALS);
     }
 
+    // Generate JWT tokens
+    const accessToken = generateAccessToken(user);
+    const refreshToken = generateRefreshToken(user);
+
     return sendSuccess(res, 200, {
       user: sanitizeUser(user),
-      token: `mock-token-${user.id}`,
+      accessToken,
+      refreshToken,
+      // Keep legacy token for backwards compatibility
+      token: accessToken,
     }, SUCCESS_MESSAGES.LOGIN_SUCCESS);
+  })
+);
+
+/**
+ * POST /users/refresh-token - Refresh access token
+ */
+router.post('/refresh-token',
+  refreshAccessToken,
+  asyncHandler(async (req, res) => {
+    return sendSuccess(res, 200, {
+      accessToken: req.newAccessToken,
+      refreshToken: req.newRefreshToken,
+      // Keep legacy token for backwards compatibility
+      token: req.newAccessToken,
+    }, 'Token refreshed successfully');
   })
 );
 
