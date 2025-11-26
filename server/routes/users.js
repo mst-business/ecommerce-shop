@@ -69,7 +69,7 @@ router.post('/login',
   asyncHandler(async (req, res) => {
     const { username, password } = req.body;
     
-    const user = await User.findOne({ username });
+    const user = await User.findOne({ username }).select('+password');
     if (!user) {
       throw new UnauthorizedError(ERROR_MESSAGES.INVALID_CREDENTIALS);
     }
