@@ -2,38 +2,65 @@ import ProductGrid from '@/components/ProductGrid'
 import SearchAndFilters from '@/components/SearchAndFilters'
 import CategoryList from '@/components/CategoryList'
 import FeaturedProducts from '@/components/FeaturedProducts'
+import Hero from '@/components/Hero'
 
 export default function Home() {
   return (
-    <div className="container mx-auto px-4 py-8">
+    <div>
+      {/* Hero Banner */}
+      <Hero />
 
-      {/* Category List */}
-      <CategoryList />
+      <div className="container mx-auto px-4 py-12">
+        {/* Category List */}
+        <section className="mb-16">
+          <div className="flex items-center justify-between mb-8">
+            <div>
+              <h2 className="text-2xl md:text-3xl font-bold text-gray-900">Shop by Category</h2>
+              <p className="text-gray-500 mt-1">Find what you're looking for</p>
+            </div>
+          </div>
+          <CategoryList />
+        </section>
 
-      {/* Featured Products Sections */}
-      <FeaturedProducts 
-        title="🔥 Most Ordered Products" 
-        filterType="most-ordered"
-        limit={4}
-      />
+        {/* Featured Products Sections */}
+        <section className="mb-16">
+          <FeaturedProducts 
+            title="Trending Now" 
+            subtitle="Most popular products this week"
+            filterType="most-ordered"
+            limit={4}
+          />
+        </section>
 
-      <FeaturedProducts 
-        title="⭐ Top Rated Products" 
-        filterType="top-rated"
-        limit={4}
-      />
+        <section className="mb-16">
+          <FeaturedProducts 
+            title="Top Rated" 
+            subtitle="Loved by our customers"
+            filterType="top-rated"
+            limit={4}
+          />
+        </section>
 
-      <FeaturedProducts 
-        title="🆕 Newest Arrivals" 
-        filterType="newest"
-        limit={4}
-      />
+        <section className="mb-16">
+          <FeaturedProducts 
+            title="Fresh Arrivals" 
+            subtitle="Just landed in store"
+            filterType="newest"
+            limit={4}
+          />
+        </section>
 
-      {/* Search and All Products */}
-      <div className="mt-12">
-        <h2 className="text-2xl font-bold text-gray-800 mb-6">All Products</h2>
-        <SearchAndFilters />
-        <ProductGrid />
+        {/* All Products Section */}
+        <section>
+          <div className="flex items-center justify-between mb-8">
+            <div>
+              <h2 className="text-2xl md:text-3xl font-bold text-gray-900">All Products</h2>
+              <p className="text-gray-500 mt-1">Browse our complete collection</p>
+            </div>
+          </div>
+          <SearchAndFilters />
+          <ProductGrid />
+        </section>
       </div>
     </div>
   )

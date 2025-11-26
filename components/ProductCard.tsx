@@ -3,10 +3,12 @@
 import Link from 'next/link'
 import { Product } from '@/lib/api-client'
 import { useCart } from '@/contexts/CartContext'
+import { useToast } from '@/contexts/ToastContext'
 import { useState } from 'react'
 
 interface ProductCardProps {
   product: Product
+  index?: number
 }
 
 // Star Rating Display Component
@@ -18,7 +20,7 @@ function StarRating({ rating, count }: { rating: number; count?: number }) {
           <svg
             key={star}
             className={`w-4 h-4 ${
-              star <= Math.round(rating) ? 'text-yellow-400' : 'text-gray-300'
+              star <= Math.round(rating) ? 'text-accent-400' : 'text-gray-200'
             }`}
             fill="currentColor"
             viewBox="0 0 20 20"
@@ -28,16 +30,17 @@ function StarRating({ rating, count }: { rating: number; count?: number }) {
         ))}
       </div>
       {count !== undefined && count > 0 && (
-        <span className="text-xs text-gray-500">({count})</span>
+        <span className="text-xs text-gray-400 ml-1">({count})</span>
       )}
     </div>
   )
 }
 
-export default function ProductCard({ product }: ProductCardProps) {
+export default function ProductCard({ product, index = 0 }: ProductCardProps) {
   const { addToCart } = useCart()
+  const { showToast } = useToast()
   const [adding, setAdding] = useState(false)
-  const [showToast, setShowToast] = useState(false)
+  const [imageLoaded, setImageLoaded] = useState(false)
 
   const handleAddToCart = async (e: React.MouseEvent) => {
     e.preventDefault()
@@ -50,51 +53,94 @@ export default function ProductCard({ product }: ProductCardProps) {
         price: product.price,
         image: product.image,
       })
-      // Show success toast
-      setShowToast(true)
-      setTimeout(() => setShowToast(false), 2000)
+      showToast(`${product.name} added to cart!`, 'success')
     } catch (error: any) {
-      alert(error.message || 'Failed to add to cart')
+      showToast(error.message || 'Failed to add to cart', 'error')
     } finally {
       setAdding(false)
     }
   }
 
+  const isOutOfStock = product.stock === 0
+  const isLowStock = product.stock > 0 && product.stock <= 5
+
   return (
     <Link href={`/product/${product.id}`}>
-      <div className="bg-white rounded-xl shadow-md overflow-hidden hover:shadow-xl transition-all duration-300 cursor-pointer group relative">
-        {/* Success Toast */}
-        {showToast && (
-          <div className="absolute top-2 left-2 right-2 z-20 bg-green-500 text-white px-3 py-2 rounded-lg text-sm font-medium flex items-center gap-2 shadow-lg animate-pulse">
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-            </svg>
-            Added to cart!
-          </div>
-        )}
-        <div className="aspect-square bg-gray-100 relative overflow-hidden">
+      <div 
+        className="group bg-white rounded-2xl overflow-hidden border border-gray-100 hover:border-primary-200 hover:shadow-soft-lg transition-all duration-300 hover:-translate-y-1"
+        style={{ animationDelay: `${index * 50}ms` }}
+      >
+        {/* Image Container */}
+        <div className="relative aspect-square bg-gray-50 overflow-hidden">
+          {/* Skeleton loader */}
+          {!imageLoaded && (
+            <div className="absolute inset-0 skeleton" />
+          )}
+          
           <img
             src={product.image || '/placeholder.jpg'}
             alt={product.name}
-            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+            className={`w-full h-full object-cover transition-all duration-500 group-hover:scale-105 ${
+              imageLoaded ? 'opacity-100' : 'opacity-0'
+            } ${isOutOfStock ? 'grayscale' : ''}`}
+            onLoad={() => setImageLoaded(true)}
             onError={(e) => {
-              e.currentTarget.src = 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%22200%22 height=%22200%22%3E%3Crect fill=%22%23ddd%22 width=%22200%22 height=%22200%22/%3E%3Ctext fill=%22%23999%22 font-family=%22sans-serif%22 font-size=%2218%22 dy=%2210.5%22 font-weight=%22bold%22 x=%2250%25%22 y=%2250%25%22 text-anchor=%22middle%22%3ENo Image%3C/text%3E%3C/svg%3E'
+              e.currentTarget.src = 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%22200%22 height=%22200%22%3E%3Crect fill=%22%23f3f4f6%22 width=%22200%22 height=%22200%22/%3E%3Ctext fill=%22%239ca3af%22 font-family=%22sans-serif%22 font-size=%2216%22 dy=%2210.5%22 font-weight=%22500%22 x=%2250%25%22 y=%2250%25%22 text-anchor=%22middle%22%3ENo Image%3C/text%3E%3C/svg%3E'
+              setImageLoaded(true)
             }}
           />
-          {product.stock === 0 && (
-            <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
-              <span className="bg-red-500 text-white px-4 py-2 rounded-full text-sm font-medium">
+
+          {/* Badges */}
+          <div className="absolute top-3 left-3 flex flex-col gap-2">
+            {isOutOfStock && (
+              <span className="badge badge-error">
                 Out of Stock
               </span>
-            </div>
-          )}
+            )}
+            {isLowStock && !isOutOfStock && (
+              <span className="badge badge-warning">
+                Only {product.stock} left
+              </span>
+            )}
+            {product.averageRating && product.averageRating >= 4.5 && (
+              <span className="badge badge-accent">
+                ⭐ Top Rated
+              </span>
+            )}
+          </div>
+
+          {/* Quick Add Button */}
+          <div className="absolute bottom-0 left-0 right-0 p-3 bg-gradient-to-t from-black/60 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+            <button
+              onClick={handleAddToCart}
+              disabled={adding || isOutOfStock}
+              className="w-full py-2.5 bg-white text-gray-900 font-semibold rounded-xl hover:bg-primary-50 disabled:bg-gray-200 disabled:text-gray-400 transition-colors flex items-center justify-center gap-2"
+            >
+              {adding ? (
+                <>
+                  <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                  </svg>
+                  Adding...
+                </>
+              ) : isOutOfStock ? (
+                'Out of Stock'
+              ) : (
+                <>
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                  </svg>
+                  Quick Add
+                </>
+              )}
+            </button>
+          </div>
         </div>
+
+        {/* Content */}
         <div className="p-4">
-          <h3 className="text-lg font-semibold text-gray-800 mb-1 line-clamp-2 group-hover:text-primary-600 transition-colors">
-            {product.name}
-          </h3>
-          
-          {/* Rating Display */}
+          {/* Rating */}
           <div className="mb-2">
             {(product.ratingCount || 0) > 0 ? (
               <StarRating rating={product.averageRating || 0} count={product.ratingCount} />
@@ -103,28 +149,33 @@ export default function ProductCard({ product }: ProductCardProps) {
             )}
           </div>
 
+          {/* Title */}
+          <h3 className="font-semibold text-gray-900 mb-1 line-clamp-2 group-hover:text-primary-600 transition-colors">
+            {product.name}
+          </h3>
+
+          {/* Description */}
           {product.description && (
-            <p className="text-sm text-gray-600 mb-3 line-clamp-2">
+            <p className="text-sm text-gray-500 mb-3 line-clamp-2">
               {product.description}
             </p>
           )}
-          <div className="flex items-center justify-between mb-3">
-            <span className="text-xl font-bold text-primary-600">
-              ${product.price.toFixed(2)}
-            </span>
-            {product.stock > 0 && product.stock <= 10 && (
-              <span className="text-xs text-orange-500 font-medium">
-                Only {product.stock} left
+
+          {/* Price */}
+          <div className="flex items-center justify-between">
+            <div className="flex items-baseline gap-1">
+              <span className="text-xl font-bold text-gray-900">
+                ${product.price.toFixed(2)}
+              </span>
+            </div>
+            
+            {/* Stock indicator */}
+            {!isOutOfStock && !isLowStock && (
+              <span className="text-xs text-primary-600 font-medium">
+                In Stock
               </span>
             )}
           </div>
-          <button
-            onClick={handleAddToCart}
-            disabled={adding || product.stock === 0}
-            className="w-full bg-primary-600 text-white py-2.5 rounded-lg hover:bg-primary-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors font-medium"
-          >
-            {adding ? 'Adding...' : product.stock === 0 ? 'Out of Stock' : 'Add to Cart'}
-          </button>
         </div>
       </div>
     </Link>
