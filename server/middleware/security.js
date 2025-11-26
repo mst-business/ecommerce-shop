@@ -5,7 +5,7 @@ const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 const mongoSanitize = require('express-mongo-sanitize');
 const hpp = require('hpp');
-const { v4: uuidv4 } = require('uuid');
+const crypto = require('crypto');
 
 const { RATE_LIMIT, HELMET, REQUEST_LIMITS, SENSITIVE_FIELDS } = require('../config/security');
 
@@ -67,7 +67,7 @@ const hppMiddleware = hpp({
  * Adds unique ID to each request for tracking
  */
 function requestId(req, res, next) {
-  req.requestId = req.headers['x-request-id'] || uuidv4();
+  req.requestId = req.headers['x-request-id'] || crypto.randomUUID();
   res.setHeader('x-request-id', req.requestId);
   next();
 }
@@ -278,4 +278,5 @@ module.exports = {
   filterSensitiveData,
   applySecurityMiddleware,
 };
+
 

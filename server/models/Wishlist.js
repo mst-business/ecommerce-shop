@@ -93,3 +93,4 @@ WishlistSchema.statics.getByShareToken = async function(token) {
 
 module.exports = mongoose.model('Wishlist', WishlistSchema);
 
+

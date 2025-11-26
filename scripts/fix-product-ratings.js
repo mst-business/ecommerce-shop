@@ -96,3 +96,4 @@ async function fixProductRatings() {
 
 fixProductRatings();
 
+

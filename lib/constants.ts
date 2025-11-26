@@ -149,3 +149,4 @@ export function getCategoryGradient(index: number): string {
   return CATEGORY_GRADIENTS[index % CATEGORY_GRADIENTS.length];
 }
 
+

@@ -223,3 +223,4 @@ CouponSchema.statics.findValidByCode = async function(code) {
 
 module.exports = mongoose.model('Coupon', CouponSchema);
 
+
