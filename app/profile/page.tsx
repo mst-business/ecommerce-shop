@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { Suspense, useEffect, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { api, User, Order } from '@/lib/api-client'
@@ -547,7 +547,7 @@ function SettingsTab({ user, onUpdate }: { user: User; onUpdate: () => void }) {
 }
 
 // Main Profile Page
-export default function ProfilePage() {
+function ProfileContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const [user, setUser] = useState<User | null>(null)
@@ -665,6 +665,22 @@ export default function ProfilePage() {
         {activeTab === 'settings' && <SettingsTab user={user} onUpdate={loadData} />}
       </div>
     </div>
+  )
+}
+
+function LoadingProfile() {
+  return (
+    <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+      <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600"></div>
+    </div>
+  )
+}
+
+export default function ProfilePage() {
+  return (
+    <Suspense fallback={<LoadingProfile />}>
+      <ProfileContent />
+    </Suspense>
   )
 }
 

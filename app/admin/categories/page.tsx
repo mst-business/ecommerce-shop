@@ -62,13 +62,13 @@ function DeleteConfirmModal({
         {hasProducts ? (
           <div className="p-4 bg-rose-500/10 border border-rose-500/30 rounded-xl">
             <p className="text-rose-400">
-              Cannot delete <span className="font-semibold">"{categoryName}"</span> because it has products. 
+              Cannot delete <span className="font-semibold">&quot;{categoryName}&quot;</span> because it has products. 
               Please reassign or delete the products first.
             </p>
           </div>
         ) : (
           <p className="text-slate-300">
-            Are you sure you want to delete <span className="font-semibold text-white">"{categoryName}"</span>? 
+            Are you sure you want to delete <span className="font-semibold text-white">&quot;{categoryName}&quot;</span>? 
             This action cannot be undone.
           </p>
         )}

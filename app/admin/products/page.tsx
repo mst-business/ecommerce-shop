@@ -93,7 +93,7 @@ function DeleteConfirmModal({
     <Modal isOpen={isOpen} onClose={onClose} title="Delete Product">
       <div className="space-y-6">
         <p className="text-slate-300">
-          Are you sure you want to delete <span className="font-semibold text-white">"{productName}"</span>? 
+          Are you sure you want to delete <span className="font-semibold text-white">&quot;{productName}&quot;</span>? 
           This action cannot be undone.
         </p>
         <div className="flex gap-3 justify-end">
@@ -150,7 +150,7 @@ function StockModal({
       <form onSubmit={handleSubmit} className="space-y-6">
         <div>
           <p className="text-slate-300 mb-4">
-            Update stock for <span className="font-semibold text-white">"{product?.name}"</span>
+            Update stock for <span className="font-semibold text-white">&quot;{product?.name}&quot;</span>
           </p>
           <label className="block text-sm font-medium text-slate-400 mb-2">
             Stock Quantity

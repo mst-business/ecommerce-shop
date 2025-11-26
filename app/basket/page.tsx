@@ -78,7 +78,7 @@ export default function BasketPage() {
             </svg>
           </div>
           <h1 className="text-2xl font-bold text-gray-900 mb-2">Your cart is empty</h1>
-          <p className="text-gray-500 mb-8">Looks like you haven't added anything to your cart yet.</p>
+          <p className="text-gray-500 mb-8">Looks like you haven&apos;t added anything to your cart yet.</p>
           <Link
             href="/"
             className="inline-flex items-center gap-2 px-8 py-3.5 bg-primary-600 text-white rounded-xl font-semibold hover:bg-primary-700 transition-all hover:shadow-lg hover:shadow-primary-600/25"

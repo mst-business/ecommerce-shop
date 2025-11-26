@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { Suspense, useEffect, useState } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { api, Category, Product } from '@/lib/api-client'
@@ -28,7 +28,7 @@ function getCategoryIcon(name: string): string {
   return categoryIcons.default
 }
 
-export default function CategoriesPage() {
+function CategoriesContent() {
   const searchParams = useSearchParams()
   const router = useRouter()
   const [categories, setCategories] = useState<Category[]>([])
@@ -219,6 +219,24 @@ export default function CategoriesPage() {
         </div>
       )}
     </div>
+  )
+}
+
+function LoadingCategories() {
+  return (
+    <div className="container mx-auto px-4 py-8">
+      <div className="flex justify-center items-center py-20">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600"></div>
+      </div>
+    </div>
+  )
+}
+
+export default function CategoriesPage() {
+  return (
+    <Suspense fallback={<LoadingCategories />}>
+      <CategoriesContent />
+    </Suspense>
   )
 }
 

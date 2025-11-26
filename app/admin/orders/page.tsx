@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
-import { api, AdminOrder } from '@/lib/api-client'
+import { api, AdminOrder, OrderStatus } from '@/lib/api-client'
 
 // Status badge component
 function StatusBadge({ status }: { status: string }) {
@@ -77,14 +77,14 @@ function StatusUpdateModal({
   isOpen: boolean
   onClose: () => void
   order: AdminOrder | null
-  onUpdate: (id: number, status: string) => void
+  onUpdate: (id: number, status: OrderStatus) => Promise<void>
 }) {
-  const [status, setStatus] = useState('')
+  const [status, setStatus] = useState<OrderStatus>('pending')
   const [loading, setLoading] = useState(false)
 
   useEffect(() => {
     if (order) {
-      setStatus(order.status)
+      setStatus(order.status as OrderStatus)
     }
   }, [order])
 
@@ -97,7 +97,7 @@ function StatusUpdateModal({
     onClose()
   }
 
-  const statuses = ['pending', 'processing', 'shipped', 'delivered', 'cancelled']
+  const statuses: OrderStatus[] = ['pending', 'processing', 'shipped', 'delivered', 'cancelled']
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} title="Update Order Status">
@@ -206,12 +206,13 @@ function OrderDetailModal({
           <div className="p-4 bg-slate-700/30 rounded-xl">
             <p className="text-sm text-slate-400 mb-2">Shipping Address</p>
             <div className="text-white">
-              {order.shippingAddress.street && <p>{order.shippingAddress.street}</p>}
+              {order.shippingAddress.fullName && <p className="font-medium">{order.shippingAddress.fullName}</p>}
+              {order.shippingAddress.address && <p>{order.shippingAddress.address}</p>}
               {order.shippingAddress.city && (
                 <p>
                   {order.shippingAddress.city}
                   {order.shippingAddress.state && `, ${order.shippingAddress.state}`}
-                  {order.shippingAddress.zip && ` ${order.shippingAddress.zip}`}
+                  {order.shippingAddress.zipCode && ` ${order.shippingAddress.zipCode}`}
                 </p>
               )}
               {order.shippingAddress.country && <p>{order.shippingAddress.country}</p>}
@@ -324,7 +325,7 @@ export default function AdminOrders() {
     }
   }
 
-  const handleUpdateStatus = async (id: number, status: string) => {
+  const handleUpdateStatus = async (id: number, status: OrderStatus) => {
     try {
       await api.updateOrderStatus(id, status)
       await loadOrders()

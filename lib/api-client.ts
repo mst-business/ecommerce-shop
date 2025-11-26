@@ -2,8 +2,14 @@
  * API Client for E-commerce API
  */
 import { buildQueryString, isClient, safeJsonParse } from './utils';
-import { API_CONFIG, STORAGE_KEYS, OrderStatus } from './constants';
+import { API_CONFIG, STORAGE_KEYS } from './constants';
 import { getUserFriendlyError, logError, AppError, ErrorCode } from './errors';
+
+// Re-export types from constants
+export type { OrderStatus } from './constants';
+
+// Import type for local use
+import type { OrderStatus } from './constants';
 
 // ============================================
 // Type Definitions

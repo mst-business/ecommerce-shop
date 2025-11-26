@@ -1,11 +1,11 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { Suspense, useEffect, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { api, Order } from '@/lib/api-client'
 
-export default function OrdersPage() {
+function OrdersContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const orderId = searchParams.get('orderId')
@@ -195,6 +195,20 @@ export default function OrdersPage() {
   )
 }
 
+function LoadingOrders() {
+  return (
+    <div className="container mx-auto px-4 py-8">
+      <div className="flex justify-center items-center py-20">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600"></div>
+      </div>
+    </div>
+  )
+}
 
-
-
+export default function OrdersPage() {
+  return (
+    <Suspense fallback={<LoadingOrders />}>
+      <OrdersContent />
+    </Suspense>
+  )
+}

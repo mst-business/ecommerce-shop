@@ -65,7 +65,7 @@ export default function RegisterPage() {
     const { isValid, errors: validationErrors } = validateForm(formData, {
       username: validators.username,
       email: validators.email,
-      password: (v) => validators.password(v as string, 6),
+      password: (v) => validators.password(v, 6),
     })
 
     if (!isValid) {

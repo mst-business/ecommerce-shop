@@ -14,8 +14,16 @@ export interface ValidationResult {
   errors: Record<string, string>;
 }
 
+// Helper to safely convert unknown to string
+const asString = (value: unknown): string => {
+  if (typeof value === 'string') return value;
+  if (value === null || value === undefined) return '';
+  return String(value);
+};
+
 /**
  * Individual field validators
+ * All validators accept `unknown` to work with validateForm, but internally handle strings
  */
 export const validators = {
   /**
@@ -34,19 +42,21 @@ export const validators = {
   /**
    * Validate email format
    */
-  email: (value: string): string | null => {
-    if (!value) return 'Email is required';
+  email: (value: unknown): string | null => {
+    const str = asString(value);
+    if (!str) return 'Email is required';
     const regex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!regex.test(value)) return 'Please enter a valid email address';
+    if (!regex.test(str)) return 'Please enter a valid email address';
     return null;
   },
 
   /**
    * Validate password strength
    */
-  password: (value: string, minLength: number = 6): string | null => {
-    if (!value) return 'Password is required';
-    if (value.length < minLength) {
+  password: (value: unknown, minLength: number = 6): string | null => {
+    const str = asString(value);
+    if (!str) return 'Password is required';
+    if (str.length < minLength) {
       return `Password must be at least ${minLength} characters`;
     }
     return null;
@@ -55,25 +65,27 @@ export const validators = {
   /**
    * Validate password with strength requirements
    */
-  strongPassword: (value: string): string | null => {
-    if (!value) return 'Password is required';
-    if (value.length < 8) return 'Password must be at least 8 characters';
-    if (!/[A-Z]/.test(value)) return 'Password must contain an uppercase letter';
-    if (!/[a-z]/.test(value)) return 'Password must contain a lowercase letter';
-    if (!/[0-9]/.test(value)) return 'Password must contain a number';
+  strongPassword: (value: unknown): string | null => {
+    const str = asString(value);
+    if (!str) return 'Password is required';
+    if (str.length < 8) return 'Password must be at least 8 characters';
+    if (!/[A-Z]/.test(str)) return 'Password must contain an uppercase letter';
+    if (!/[a-z]/.test(str)) return 'Password must contain a lowercase letter';
+    if (!/[0-9]/.test(str)) return 'Password must contain a number';
     return null;
   },
 
   /**
    * Validate phone number
    */
-  phone: (value: string, required: boolean = false): string | null => {
-    if (!value) {
+  phone: (value: unknown, required: boolean = false): string | null => {
+    const str = asString(value);
+    if (!str) {
       return required ? 'Phone number is required' : null;
     }
     // Accepts formats: +1234567890, 123-456-7890, (123) 456-7890, etc.
     const regex = /^[\+]?[(]?[0-9]{1,3}[)]?[-\s\.]?[0-9]{3}[-\s\.]?[0-9]{4,6}$/;
-    if (!regex.test(value.replace(/\s/g, ''))) {
+    if (!regex.test(str.replace(/\s/g, ''))) {
       return 'Please enter a valid phone number';
     }
     return null;
@@ -82,11 +94,12 @@ export const validators = {
   /**
    * Validate US zip code
    */
-  zipCode: (value: string): string | null => {
-    if (!value) return 'Zip code is required';
+  zipCode: (value: unknown): string | null => {
+    const str = asString(value);
+    if (!str) return 'Zip code is required';
     // US zip code: 12345 or 12345-6789
     const regex = /^\d{5}(-\d{4})?$/;
-    if (!regex.test(value)) {
+    if (!regex.test(str)) {
       return 'Please enter a valid zip code (e.g., 12345)';
     }
     return null;
@@ -95,9 +108,10 @@ export const validators = {
   /**
    * Validate minimum length
    */
-  minLength: (value: string, min: number, fieldName: string = 'This field'): string | null => {
-    if (!value) return null;
-    if (value.length < min) {
+  minLength: (value: unknown, min: number, fieldName: string = 'This field'): string | null => {
+    const str = asString(value);
+    if (!str) return null;
+    if (str.length < min) {
       return `${fieldName} must be at least ${min} characters`;
     }
     return null;
@@ -106,9 +120,10 @@ export const validators = {
   /**
    * Validate maximum length
    */
-  maxLength: (value: string, max: number, fieldName: string = 'This field'): string | null => {
-    if (!value) return null;
-    if (value.length > max) {
+  maxLength: (value: unknown, max: number, fieldName: string = 'This field'): string | null => {
+    const str = asString(value);
+    if (!str) return null;
+    if (str.length > max) {
       return `${fieldName} must be no more than ${max} characters`;
     }
     return null;
@@ -117,8 +132,9 @@ export const validators = {
   /**
    * Validate number range
    */
-  numberRange: (value: number, min: number, max: number, fieldName: string = 'Value'): string | null => {
-    if (value < min || value > max) {
+  numberRange: (value: unknown, min: number, max: number, fieldName: string = 'Value'): string | null => {
+    const num = typeof value === 'number' ? value : Number(value);
+    if (num < min || num > max) {
       return `${fieldName} must be between ${min} and ${max}`;
     }
     return null;
@@ -127,8 +143,9 @@ export const validators = {
   /**
    * Validate positive number
    */
-  positiveNumber: (value: number, fieldName: string = 'Value'): string | null => {
-    if (isNaN(value) || value <= 0) {
+  positiveNumber: (value: unknown, fieldName: string = 'Value'): string | null => {
+    const num = typeof value === 'number' ? value : Number(value);
+    if (isNaN(num) || num <= 0) {
       return `${fieldName} must be a positive number`;
     }
     return null;
@@ -137,12 +154,13 @@ export const validators = {
   /**
    * Validate username (alphanumeric with underscores)
    */
-  username: (value: string): string | null => {
-    if (!value) return 'Username is required';
-    if (value.length < 3) return 'Username must be at least 3 characters';
-    if (value.length > 20) return 'Username must be no more than 20 characters';
+  username: (value: unknown): string | null => {
+    const str = asString(value);
+    if (!str) return 'Username is required';
+    if (str.length < 3) return 'Username must be at least 3 characters';
+    if (str.length > 20) return 'Username must be no more than 20 characters';
     const regex = /^[a-zA-Z0-9_]+$/;
-    if (!regex.test(value)) {
+    if (!regex.test(str)) {
       return 'Username can only contain letters, numbers, and underscores';
     }
     return null;
@@ -151,9 +169,10 @@ export const validators = {
   /**
    * Validate credit card number (basic Luhn check)
    */
-  creditCard: (value: string): string | null => {
-    if (!value) return 'Card number is required';
-    const cleaned = value.replace(/\s|-/g, '');
+  creditCard: (value: unknown): string | null => {
+    const str = asString(value);
+    if (!str) return 'Card number is required';
+    const cleaned = str.replace(/\s|-/g, '');
     if (!/^\d{13,19}$/.test(cleaned)) {
       return 'Please enter a valid card number';
     }
@@ -178,8 +197,8 @@ export const validators = {
   /**
    * Match two fields (e.g., password confirmation)
    */
-  matches: (value: string, compareValue: string, fieldName: string = 'Fields'): string | null => {
-    if (value !== compareValue) {
+  matches: (value: unknown, compareValue: unknown, fieldName: string = 'Fields'): string | null => {
+    if (asString(value) !== asString(compareValue)) {
       return `${fieldName} do not match`;
     }
     return null;

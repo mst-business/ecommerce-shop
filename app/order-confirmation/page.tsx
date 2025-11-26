@@ -1,11 +1,11 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { Suspense, useEffect, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { api, Order } from '@/lib/api-client'
 
-export default function OrderConfirmationPage() {
+function OrderConfirmationContent() {
   const searchParams = useSearchParams()
   const [order, setOrder] = useState<Order | null>(null)
   const [loading, setLoading] = useState(true)
@@ -74,7 +74,7 @@ export default function OrderConfirmationPage() {
           </div>
           <h1 className="text-3xl font-bold text-gray-800 mb-2">Order Confirmed!</h1>
           <p className="text-gray-600">
-            Thank you for your order. We've sent a confirmation to <strong>{email}</strong>
+            Thank you for your order. We&apos;ve sent a confirmation to <strong>{email}</strong>
           </p>
         </div>
 
@@ -175,6 +175,24 @@ export default function OrderConfirmationPage() {
         </div>
       </div>
     </div>
+  )
+}
+
+function LoadingOrderConfirmation() {
+  return (
+    <div className="container mx-auto px-4 py-8">
+      <div className="flex justify-center items-center py-20">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600"></div>
+      </div>
+    </div>
+  )
+}
+
+export default function OrderConfirmationPage() {
+  return (
+    <Suspense fallback={<LoadingOrderConfirmation />}>
+      <OrderConfirmationContent />
+    </Suspense>
   )
 }
 

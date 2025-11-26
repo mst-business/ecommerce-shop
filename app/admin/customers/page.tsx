@@ -486,7 +486,7 @@ export default function AdminCustomers() {
         </div>
         {debouncedSearch && (
           <p className="text-sm text-slate-400 mt-3">
-            Showing results for "{debouncedSearch}"
+            Showing results for &quot;{debouncedSearch}&quot;
           </p>
         )}
       </div>
